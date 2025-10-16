@@ -19,7 +19,7 @@ SECRET_KEY = "django-insecure-mgi*0-a4^pv-6109$koden*5s+c=l3@qi-2&v%rn8=u4wvmkdk
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["powermason-render-beta-1.onrender.com", "127.0.0.1", "localhost"]
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
@@ -63,6 +63,7 @@ MESSAGE_TAGS = {
 }
 
 MIDDLEWARE = [
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -158,6 +159,7 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, "powermason_capstone/static")]
 # Where collectstatic will put all files for production
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

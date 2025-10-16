@@ -1,0 +1,1403 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_css %}
+<!-- Preload fonts for better performance -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+
+<!-- Modern Dashboard Styles -->
+<link rel="stylesheet" href="{% static 'css/dashboard-modern.css' %}">
+{% endblock %}
+
+{% block content %}
+<!-- Live Updates Overlay -->
+<div class="fixed bottom-6 right-6 z-50">
+    <div class="flex items-center space-x-2 px-4 py-2 bg-green-500/90 backdrop-blur-sm text-white rounded-full text-sm font-medium shadow-lg">
+        <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+        <span>Live Updates</span>
+    </div>
+</div>
+{% load humanize %}
+{% load role_tags %}
+
+<style>
+    .glassmorphism {
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Enhanced Card Animations */
+    .dashboard-card {
+        background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow:
+            0 20px 25px -5px rgba(0, 0, 0, 0.1),
+            0 10px 10px -5px rgba(0, 0, 0, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .dashboard-card:hover {
+        transform: translateY(-4px);
+        box-shadow:
+            0 25px 50px -12px rgba(0, 0, 0, 0.25),
+            0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+
+    .dashboard-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
+    }
+    
+    .chart-container {
+        background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+        border-radius: 24px;
+        padding: 2rem;
+        box-shadow: 
+            0 20px 25px -5px rgba(0, 0, 0, 0.1), 
+            0 10px 10px -5px rgba(0, 0, 0, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .chart-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
+    }
+    
+    .calendar-container {
+        background: linear-gradient(145deg, #ffffff 0%, #f1f5f9 100%);
+        border-radius: 24px;
+        padding: 2rem;
+        box-shadow: 
+            0 20px 25px -5px rgba(0, 0, 0, 0.1), 
+            0 10px 10px -5px rgba(0, 0, 0, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .status-planned { 
+        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+        box-shadow: 0 10px 25px rgba(251, 191, 36, 0.3);
+    }
+    .status-ongoing { 
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+    }
+    .status-completed { 
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+    }
+    .status-cancelled {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
+    }
+
+
+
+    /* Enhanced Dashboard Styles with Modern Typography */
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+
+    #projectPopup {
+        border: 1px solid #e5e7eb;
+        transition: all 0.3s ease;
+    }
+
+    #projectPopup:hover {
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    }
+    
+    .hover-lift {
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .hover-lift:hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    }
+    
+    .animate-fade-in {
+        animation: fadeIn 0.8s ease-out forwards;
+        opacity: 0;
+    }
+    
+    .animate-slide-up {
+        animation: slideUp 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    
+    @keyframes fadeIn {
+        to { opacity: 1; }
+    }
+    
+    @keyframes slideUp {
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .loading-skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite;
+        border-radius: 8px;
+    }
+    
+    @keyframes loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+    
+    .metric-card {
+        background: linear-gradient(145deg, rgba(255,255,255,0.9), rgba(248,250,252,0.8));
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 16px;
+        padding: 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    }
+    
+    /* Custom Calendar Styles */
+    .fc-theme-standard .fc-scrollgrid {
+        border-radius: 16px;
+        overflow: hidden;
+        border: none;
+    }
+    
+    .fc-theme-standard .fc-scrollgrid th {
+        background: linear-gradient(145deg, #f8fafc, #e2e8f0);
+        border: none;
+        padding: 1rem;
+        font-weight: 600;
+        color: #475569;
+    }
+    
+    .fc-theme-standard .fc-scrollgrid td {
+        border: 1px solid rgba(226, 232, 240, 0.5);
+    }
+    
+    .fc-daygrid-event {
+        border-radius: 8px !important;
+        border: none !important;
+        font-weight: 500;
+        padding: 2px 6px;
+        margin: 1px 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .fc-button-primary {
+        background: linear-gradient(145deg, #3b82f6, #1d4ed8) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .fc-button-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+    
+    .fc-today-button, .fc-prev-button, .fc-next-button {
+        border-radius: 12px !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Progress indicators */
+    .progress-ring {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: conic-gradient(#3b82f6 var(--progress, 0%), #e5e7eb 0%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+    
+    .progress-ring::before {
+        content: '';
+        position: absolute;
+        width: 40px;
+        height: 40px;
+        background: white;
+        border-radius: 50%;
+    }
+    
+    .progress-text {
+        position: relative;
+        z-index: 1;
+        font-weight: bold;
+        font-size: 0.875rem;
+        color: #374151;
+    }
+
+    /* Enhanced Map Styles */
+    #projectMap {
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .leaflet-container {
+        background: #f8fafc;
+        border-radius: 16px;
+    }
+
+    .leaflet-control-container {
+        font-family: 'Inter', sans-serif;
+    }
+
+    .leaflet-control-zoom {
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+        border-radius: 12px !important;
+        overflow: hidden;
+    }
+
+    .leaflet-control-zoom a {
+        background: white !important;
+        border: none !important;
+        color: #374151 !important;
+        font-weight: 600;
+        transition: all 0.2s ease;
+        width: 40px !important;
+        height: 40px !important;
+        line-height: 38px !important;
+    }
+
+    .leaflet-control-zoom a:hover {
+        background: #f3f4f6 !important;
+        color: #1f2937 !important;
+    }
+
+    .leaflet-control-zoom a:first-child {
+        border-bottom: 1px solid #e5e7eb !important;
+    }
+
+    /* Custom Marker Popup Styles */
+    .leaflet-popup-content-wrapper {
+        background: white;
+        border-radius: 16px !important;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2) !important;
+        border: 1px solid rgba(255,255,255,0.2);
+        padding: 0 !important;
+        overflow: hidden;
+    }
+
+    .leaflet-popup-content {
+        margin: 0 !important;
+        padding: 20px !important;
+        font-family: 'Inter', sans-serif;
+        line-height: 1.6;
+    }
+
+    .leaflet-popup-tip {
+        background: white !important;
+        border: 1px solid rgba(255,255,255,0.2);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .popup-project-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .popup-status-badge {
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .popup-status-planned { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; }
+    .popup-status-ongoing { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; }
+    .popup-status-completed { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+    .popup-status-cancelled { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+
+    .popup-project-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1f2937;
+        margin: 0;
+    }
+
+    .popup-project-id {
+        font-size: 12px;
+        color: #6b7280;
+        font-weight: 500;
+    }
+
+    .popup-project-details {
+        font-size: 14px;
+        color: #4b5563;
+    }
+
+    .popup-project-details strong {
+        color: #1f2937;
+        font-weight: 600;
+    }
+
+    /* Map Statistics Animation */
+    .map-stat-card {
+        transition: all 0.3s ease;
+    }
+
+    .map-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    }
+
+    /* Enhanced filter card styling */
+    .filter-card {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        cursor: pointer;
+    }
+
+    .filter-card:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
+    }
+
+    .filter-card.active {
+        transform: translateY(-4px) scale(1.02) !important;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.2) !important;
+        ring: 4px;
+        ring-color: rgb(147 197 253);
+    }
+</style>
+
+<!-- Simple Dashboard Container -->
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+
+        <!-- Project Status Overview -->
+        {% if user.is_superuser or user|has_role:"OM" or user|has_role:"EG" %}
+        <section id="overview" class="mb-12">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Planned Projects Card -->
+                <div class="group bg-white/70 backdrop-blur-sm rounded-2xl border border-amber-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer filter-card" data-status="PL">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-amber-400 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-bold text-gray-900 group-hover:text-amber-600 transition-colors">{{ status_counts.planned }}</div>
+                            <div class="text-sm text-amber-600 font-semibold">{{ status_percentages.planned }}% of total</div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900 mb-1">Planned Projects</h3>
+                    <p class="text-gray-600 text-sm">Ready for execution</p>
+                    <div class="mt-4 flex items-center text-xs text-amber-600 font-medium">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                        View details
+                    </div>
+                </div>
+
+                <!-- Active Projects Card -->
+                <div class="group bg-white/70 backdrop-blur-sm rounded-2xl border border-blue-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer filter-card" data-status="OG">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{{ status_counts.ongoing }}</div>
+                            <div class="text-sm text-blue-600 font-semibold">{{ status_percentages.ongoing }}% of total</div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900 mb-1">Active Projects</h3>
+                    <p class="text-gray-600 text-sm">Currently in progress</p>
+                    <div class="mt-4 flex items-center text-xs text-blue-600 font-medium">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                        View details
+                    </div>
+                </div>
+
+                <!-- Completed Projects Card -->
+                <div class="group bg-white/70 backdrop-blur-sm rounded-2xl border border-green-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer filter-card" data-status="CP">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-bold text-gray-900 group-hover:text-green-600 transition-colors">{{ status_counts.completed }}</div>
+                            <div class="text-sm text-green-600 font-semibold">{{ status_percentages.completed }}% of total</div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900 mb-1">Completed</h3>
+                    <p class="text-gray-600 text-sm">Successfully delivered</p>
+                    <div class="mt-4 flex items-center text-xs text-green-600 font-medium">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                        View details
+                    </div>
+                </div>
+
+                <!-- Cancelled Projects Card -->
+                <div class="group bg-white/70 backdrop-blur-sm rounded-2xl border border-red-200/50 p-6 hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer filter-card" data-status="CN">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-bold text-gray-900 group-hover:text-red-600 transition-colors">{{ status_counts.cancelled }}</div>
+                            <div class="text-sm text-red-600 font-semibold">{{ status_percentages.cancelled }}% of total</div>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900 mb-1">Discontinued</h3>
+                    <p class="text-gray-600 text-sm">Terminated projects</p>
+                    <div class="mt-4 flex items-center text-xs text-red-600 font-medium">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                        View details
+                    </div>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Interactive Project Location Map -->
+        <section id="map" class="mb-12">
+            <div class="bg-white/70 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-8 shadow-sm hover:shadow-lg transition-shadow duration-300">
+                <!-- Map Header -->
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
+                            <svg class="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-900">Project Locations</h2>
+                            <p class="text-gray-600 font-medium">Interactive map showing all project sites across the Philippines</p>
+                        </div>
+                    </div>
+
+                    <!-- Map Controls -->
+                    <div class="flex items-center space-x-3">
+                        <button id="fitMapToMarkers" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors font-medium text-sm">
+                            <svg class="w-4 h-4 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clip-rule="evenodd"></path>
+                            </svg>
+                            Center
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Map Container -->
+                <div class="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl overflow-hidden shadow-inner" style="height: 500px;">
+                    <div id="projectMap" class="w-full h-full"></div>
+                    <div id="mapLoading" class="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-20">
+                        <div class="text-center">
+                            <div class="w-12 h-12 loading-skeleton rounded-full mb-4 mx-auto"></div>
+                            <p class="text-gray-600 font-medium">Loading project locations...</p>
+                            <p class="text-gray-500 text-sm mt-1">Use the status cards above to filter projects</p>
+                        </div>
+                    </div>
+
+                    <!-- Map Filter Status Indicator -->
+                    <div id="mapFilterStatus" class="hidden absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-4 py-3 shadow-lg border border-gray-200/50 z-10">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-3 h-3 rounded-full" id="filterIndicator"></div>
+                            <span class="text-sm font-semibold text-gray-700" id="filterText">Showing all projects</span>
+                            <button id="clearMapFilter" class="ml-2 text-gray-400 hover:text-gray-600 transition-colors">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Map Navigation Message -->
+                    <div id="mapNavigationHelp" class="absolute bottom-4 right-4 bg-blue-600/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg text-white text-xs font-medium z-10 opacity-80">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Click & drag to navigate • Scroll to zoom</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Analytics and Charts Section -->
+        <section id="analytics" class="mb-12">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Progress Analytics Chart -->
+                <div class="bg-white/70 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-6 shadow-sm hover:shadow-lg transition-shadow duration-300">
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-lg">
+                                <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"></path>
+                                    <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-900">Project Progress</h3>
+                                <p class="text-sm text-gray-600">Estimate vs Actual Progress</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-3 h-3 bg-orange-400 rounded-full shadow-sm"></div>
+                                <span class="text-sm font-medium text-gray-600">Estimate</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-3 h-3 bg-purple-500 rounded-full shadow-sm"></div>
+                                <span class="text-sm font-medium text-gray-600">Actual</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl overflow-auto" style="height: 450px;">
+                        <canvas id="progressChart" class="w-full h-full p-2"></canvas>
+                    </div>
+                </div>
+
+                <!-- Task Timeline Calendar -->
+                <div class="bg-white/70 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-6 shadow-sm hover:shadow-lg transition-shadow duration-300">
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                                <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-900">Task Timeline</h3>
+                                <p class="text-sm text-gray-600">Project schedules and deadlines</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl overflow-auto" style="height: 450px;">
+                        <div id="taskCalendar" class="w-full h-full p-2" style="min-height: 500px;"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- Budget Analysis Section -->
+        {% if user.is_superuser or user|has_role:"OM" or user|has_role:"EG" %}
+        <section id="budget" class="mb-12">
+            <div class="bg-white/70 backdrop-blur-sm rounded-2xl border border-gray-200/50 p-8 shadow-sm hover:shadow-lg transition-shadow duration-300">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-14 h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg">
+                            <svg class="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"></path>
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-900">Budget Analysis</h2>
+                            <p class="text-gray-600 font-medium">Financial overview across all projects</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 text-center">
+                        <div class="flex flex-col items-center space-y-1">
+                            <div class="w-4 h-4 bg-red-400 rounded-full shadow-sm"></div>
+                            <span class="text-xs font-medium text-gray-600">Estimate</span>
+                        </div>
+                        <div class="flex flex-col items-center space-y-1">
+                            <div class="w-4 h-4 bg-blue-500 rounded-full shadow-sm"></div>
+                            <span class="text-xs font-medium text-gray-600">Approved</span>
+                        </div>
+                        <div class="flex flex-col items-center space-y-1">
+                            <div class="w-4 h-4 bg-orange-400 rounded-full shadow-sm"></div>
+                            <span class="text-xs font-medium text-gray-600">Planned</span>
+                        </div>
+                        <div class="flex flex-col items-center space-y-1">
+                            <div class="w-4 h-4 bg-purple-500 rounded-full shadow-sm"></div>
+                            <span class="text-xs font-medium text-gray-600">Allocated</span>
+                        </div>
+                        <div class="flex flex-col items-center space-y-1">
+                            <div class="w-4 h-4 bg-green-500 rounded-full shadow-sm"></div>
+                            <span class="text-xs font-medium text-gray-600">Spent</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="relative bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-6" style="height: 350px;">
+                    <canvas id="budgetChart" class="w-full h-full"></canvas>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Enhanced Task Details Modal -->
+<div id="taskModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+    <div class="glassmorphism rounded-3xl shadow-2xl p-8 w-full max-w-2xl transform transition-all duration-500 scale-95 opacity-0" id="modalContent">
+        <div class="flex items-center justify-between mb-8">
+            <div class="flex items-center space-x-3">
+                <div>
+                    <h2 id="modalTitle" class="text-2xl font-bold text-gray-800">Task Details</h2>
+                    <p class="text-gray-600">Detailed task information</p>
+                </div>
+            </div>
+            <button onclick="closeTaskModal()" class="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-2xl flex items-center justify-center text-gray-500 hover:text-gray-700 transition-all duration-200">
+                <i class="fas fa-times text-lg"></i>
+            </button>
+        </div>
+        <div id="modalBody" class="space-y-6"></div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" class="hidden fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-40 backdrop-blur-sm">
+    <div class="text-center">
+        <div class="w-16 h-16 loading-skeleton rounded-full mb-4 mx-auto"></div>
+        <p class="text-gray-600 font-medium">Loading dashboard data...</p>
+        <p class="text-gray-500 text-sm mt-2">Please wait while we fetch the latest information</p>
+    </div>
+</div>
+
+
+<script type="application/json" id="projects-data">{{ projects_json|safe }}</script>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet" />
+
+<!-- Leaflet Map Dependencies -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+
+<!-- Modern Dashboard Configuration -->
+<script>
+    window.DASHBOARD_CONFIG = {
+        animations: true,
+        autoRefresh: true,
+        refreshInterval: 30000, // 30 seconds
+        theme: 'modern',
+        usePageReload: true, // Force page reload instead of API calls
+        disableExternalRefresh: true // Disable external refresh mechanisms
+    };
+
+    // Auto-refresh functionality with smooth updates
+    function initializeAutoRefresh() {
+        try {
+            if (window.DASHBOARD_CONFIG && window.DASHBOARD_CONFIG.autoRefresh) {
+                const intervalId = setInterval(function() {
+                    try {
+                        showUpdateMessage();
+                        markRefreshInProgress();
+
+                        // Add smooth transition before refresh
+                        document.body.style.transition = 'opacity 0.3s ease-in-out';
+                        document.body.style.opacity = '0.7';
+
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 300);
+                    } catch (e) {
+                        // Fallback to simple refresh
+                        window.location.reload();
+                    }
+                }, window.DASHBOARD_CONFIG.refreshInterval);
+
+                window.OUR_REFRESH_INTERVAL = intervalId;
+            }
+        } catch (e) {
+            console.error('Auto-refresh initialization error:', e);
+        }
+    }
+
+    // Show update message popup
+    function showUpdateMessage() {
+        // Create update notification with modern design
+        const updateNotification = document.createElement('div');
+        updateNotification.id = 'updateNotification';
+        updateNotification.className = 'fixed top-6 left-1/2 transform -translate-x-1/2 -translate-y-10 z-50 transition-all duration-500 ease-out';
+        updateNotification.innerHTML = `
+            <div class="bg-gradient-to-br from-indigo-600 via-blue-600 to-purple-700 backdrop-blur-xl text-white px-8 py-5 rounded-3xl shadow-2xl border border-indigo-400/20 relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent opacity-20"></div>
+                <div class="relative flex items-center space-x-5">
+                    <div class="relative">
+                        <div class="w-8 h-8 bg-gradient-to-br from-white/30 to-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/20">
+                            <div class="w-4 h-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                        <div class="absolute -inset-1 bg-gradient-to-r from-white/20 to-purple-300/20 rounded-2xl animate-pulse"></div>
+                    </div>
+                    <div class="flex flex-col">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-base font-bold tracking-wide bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">Refreshing Dashboard</span>
+                            <div class="w-2 h-2 bg-gradient-to-r from-yellow-300 to-orange-400 rounded-full animate-pulse"></div>
+                        </div>
+                        <span class="text-sm text-indigo-100/90 font-medium">Fetching latest data...</span>
+                    </div>
+                    <div class="flex space-x-1.5">
+                        <div class="w-2 h-2 bg-gradient-to-br from-white/80 to-blue-200/60 rounded-full animate-bounce shadow-lg" style="animation-delay: 0ms"></div>
+                        <div class="w-2 h-2 bg-gradient-to-br from-white/80 to-blue-200/60 rounded-full animate-bounce shadow-lg" style="animation-delay: 200ms"></div>
+                        <div class="w-2 h-2 bg-gradient-to-br from-white/80 to-blue-200/60 rounded-full animate-bounce shadow-lg" style="animation-delay: 400ms"></div>
+                    </div>
+                </div>
+                <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+            </div>
+        `;
+
+        // Add to page
+        document.body.appendChild(updateNotification);
+
+        // Animate in with bounce effect
+        setTimeout(() => {
+            updateNotification.style.transform = 'translateX(-50%) translateY(0) scale(1)';
+        }, 50);
+    }
+
+    // Show updated message after refresh
+    function showUpdatedMessage() {
+        // Check if this is after a refresh
+        const isRefresh = sessionStorage.getItem('dashboardRefreshed');
+        if (isRefresh === 'true') {
+            sessionStorage.removeItem('dashboardRefreshed');
+
+            // Create updated notification with modern design
+            const updatedNotification = document.createElement('div');
+            updatedNotification.className = 'fixed top-6 left-1/2 transform -translate-x-1/2 -translate-y-10 z-50 transition-all duration-500 ease-out';
+            updatedNotification.innerHTML = `
+                <div class="bg-gradient-to-br from-emerald-500 via-green-500 to-teal-600 backdrop-blur-xl text-white px-8 py-5 rounded-3xl shadow-2xl border border-emerald-400/20 relative overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent opacity-20"></div>
+                    <div class="relative flex items-center space-x-5">
+                        <div class="relative">
+                            <div class="w-8 h-8 bg-gradient-to-br from-white/30 to-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/20">
+                                <svg class="w-5 h-5 text-white drop-shadow-sm" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <div class="absolute -inset-1 bg-gradient-to-r from-emerald-300/20 to-green-300/20 rounded-2xl animate-pulse"></div>
+                        </div>
+                        <div class="flex flex-col">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-base font-bold tracking-wide bg-gradient-to-r from-white to-emerald-100 bg-clip-text text-transparent">Dashboard Updated</span>
+                                <div class="w-2 h-2 bg-gradient-to-r from-yellow-300 to-green-400 rounded-full animate-pulse"></div>
+                            </div>
+                            <span class="text-sm text-emerald-100/90 font-medium">All data refreshed successfully</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="w-3 h-3 bg-gradient-to-br from-white/90 to-emerald-200/70 rounded-full animate-pulse shadow-lg"></div>
+                            <div class="w-1.5 h-1.5 bg-gradient-to-br from-white/70 to-emerald-200/50 rounded-full animate-pulse shadow-sm" style="animation-delay: 300ms"></div>
+                        </div>
+                    </div>
+                    <div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-300/40 to-transparent animate-pulse"></div>
+                </div>
+            `;
+
+            document.body.appendChild(updatedNotification);
+
+            // Animate in with bounce effect
+            setTimeout(() => {
+                updatedNotification.style.transform = 'translateX(-50%) translateY(0) scale(1)';
+            }, 100);
+
+            // Auto hide after 3 seconds with smooth animation
+            setTimeout(() => {
+                updatedNotification.style.transform = 'translateX(-50%) translateY(-40px) scale(0.95)';
+                updatedNotification.style.opacity = '0';
+                setTimeout(() => {
+                    if (updatedNotification.parentNode) {
+                        updatedNotification.parentNode.removeChild(updatedNotification);
+                    }
+                }, 400);
+            }, 3000);
+        }
+
+        // Also hide any "Dashboard loaded successfully" messages
+        setTimeout(() => {
+            const loadedMessages = document.querySelectorAll('[class*="alert"], [class*="success"], [class*="loaded"]');
+            loadedMessages.forEach(msg => {
+                if (msg.textContent && msg.textContent.toLowerCase().includes('loaded') ||
+                    msg.textContent && msg.textContent.toLowerCase().includes('success')) {
+                    msg.style.transition = 'opacity 0.5s ease-out';
+                    msg.style.opacity = '0';
+                    setTimeout(() => {
+                        if (msg.parentNode) {
+                            msg.parentNode.removeChild(msg);
+                        }
+                    }, 500);
+                }
+            });
+        }, 2000);
+    }
+
+    // Mark that refresh is happening
+    function markRefreshInProgress() {
+        sessionStorage.setItem('dashboardRefreshed', 'true');
+    }
+
+
+    // Initialize auto-refresh when page loads (wait for other scripts)
+    document.addEventListener('DOMContentLoaded', function() {
+        // Disable external auto-refresh that uses hardcoded tokens
+        if (window.DashboardAutoRefresh) {
+            window.DashboardAutoRefresh = null;
+        }
+
+        // Override any external refresh mechanisms with our page reload
+        window.refreshDashboard = function() {
+            showUpdateMessage();
+            markRefreshInProgress();
+            document.body.style.transition = 'opacity 0.3s ease-in-out';
+            document.body.style.opacity = '0.7';
+            setTimeout(() => window.location.reload(), 300);
+        };
+
+        // Disable dashboard API calls that use hardcoded tokens
+        if (window.fetchDashboardData) {
+            window.fetchDashboardData = function() {
+                // External API refresh disabled - using page reload instead
+            };
+        }
+
+        // Override visibility change handlers
+        if (window.handleVisibilityChange) {
+            document.removeEventListener('visibilitychange', window.handleVisibilityChange);
+        }
+
+        document.addEventListener('visibilitychange', function() {
+            // Let the interval handle refreshing, not visibility changes
+        });
+
+        // Delay initialization to avoid conflicts with dashboard-complete.js
+        setTimeout(function() {
+            // Force disable external auto-refresh after it loads
+            if (window.refreshControls && window.refreshControls.stop) {
+                window.refreshControls.stop();
+            }
+
+            // Clear any existing intervals that might be from external scripts
+            for (let i = 1; i < 99999; i++) {
+                window.clearInterval(i);
+            }
+
+            initializeAutoRefresh();
+            showUpdatedMessage();
+        }, 2000);
+    });
+</script>
+
+<!-- Dashboard Performance Optimizations -->
+<script src="{% static 'js/dashboard-performance.js' %}"></script>
+
+<!-- Enhanced Dashboard Charts -->
+<script src="{% static 'js/dashboard-complete.js' %}"></script>
+
+<!-- Enhanced Project Location Map Implementation - FIXED -->
+<script>
+(function() {
+    'use strict';
+    
+    console.log('🗺️ Map script loading...');
+    
+    // Prevent duplicate initialization
+    if (window.projectMapInitialized) {
+        console.warn('⚠️ Map already initialized, skipping duplicate initialization');
+        return;
+    }
+    
+    // Mark as initializing
+    window.projectMapInitializing = true;
+
+    function initializeProjectMap() {
+        console.log('🗺️ Starting map initialization...');
+        
+        // Check for container
+        const mapContainer = document.getElementById('projectMap');
+        if (!mapContainer) {
+            console.error('❌ Map container #projectMap not found');
+            return;
+        }
+        
+        // Check for Leaflet
+        if (typeof L === 'undefined') {
+            console.error('❌ Leaflet not loaded, retrying in 500ms...');
+            setTimeout(initializeProjectMap, 500);
+            return;
+        }
+        
+        console.log('✅ Container and Leaflet ready');
+        
+        // Philippines center coordinates
+        const philippinesCenter = [12.8797, 121.7740];
+
+        // Initialize map centered on Philippines with EXPLICIT interaction settings
+        const map = L.map('projectMap', {
+            center: philippinesCenter,
+            zoom: 6,
+            minZoom: 5,
+            maxZoom: 18,
+            zoomControl: true,
+            scrollWheelZoom: true,
+            doubleClickZoom: true,
+            dragging: true,
+            touchZoom: true,
+            boxZoom: true,
+            keyboard: true,
+            tap: true,
+            zoomSnap: 0.5,
+            zoomDelta: 0.5,
+            trackResize: true,
+            worldCopyJump: false,
+            closePopupOnClick: false
+        });
+
+        console.log('✅ Map object created');
+
+        // CRITICAL: Immediately ensure interactions are enabled
+        setTimeout(() => {
+            if (map.dragging) {
+                map.dragging.enable();
+                console.log('✅ Dragging enabled:', map.dragging.enabled());
+            }
+            if (map.scrollWheelZoom) {
+                map.scrollWheelZoom.enable();
+                console.log('✅ ScrollWheelZoom enabled:', map.scrollWheelZoom.enabled());
+            }
+            if (map.doubleClickZoom) {
+                map.doubleClickZoom.enable();
+                console.log('✅ DoubleClickZoom enabled:', map.doubleClickZoom.enabled());
+            }
+            if (map.touchZoom) {
+                map.touchZoom.enable();
+                console.log('✅ TouchZoom enabled:', map.touchZoom.enabled());
+            }
+        }, 100);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 18,
+            subdomains: ['a', 'b', 'c']
+        }).addTo(map);
+
+        console.log('✅ Tiles added');
+
+        // Status color mapping
+        const statusColors = {
+            'PL': '#f59e0b',
+            'OG': '#3b82f6',
+            'CP': '#10b981',
+            'CN': '#ef4444',
+            'PD': '#6b7280',
+            'DR': '#8b5cf6'
+        };
+
+        const statusLabels = {
+            'PL': 'Planned',
+            'OG': 'Ongoing',
+            'CP': 'Completed',
+            'CN': 'Discontinued',
+            'PD': 'Pending',
+            'DR': 'Draft'
+        };
+
+        // Get projects data
+        let projectsData = [];
+        try {
+            const projectsElement = document.getElementById('projects-data');
+            if (projectsElement && projectsElement.textContent.trim()) {
+                projectsData = JSON.parse(projectsElement.textContent);
+                console.log('✅ Loaded', projectsData.length, 'projects');
+            }
+        } catch (e) {
+            console.warn('Could not parse projects data:', e);
+        }
+
+        // Store all markers for filtering
+        let allMarkers = [];
+        let markerLayerGroup = L.layerGroup().addTo(map);
+        let currentFilter = null;
+
+        // Create custom marker icons
+        function createCustomIcon(status) {
+            const color = statusColors[status] || '#6b7280';
+            return L.divIcon({
+                className: 'custom-marker',
+                html: `
+                    <div style="
+                        width: 24px;
+                        height: 24px;
+                        background: ${color};
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        position: relative;
+                        cursor: pointer;
+                    ">
+                        <div style="
+                            width: 6px;
+                            height: 6px;
+                            background: white;
+                            border-radius: 50%;
+                        "></div>
+                    </div>
+                `,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15],
+                popupAnchor: [0, -15]
+            });
+        }
+
+        // Parse GPS coordinates
+        function parseGPSCoordinates(gpsString) {
+            if (!gpsString) return null;
+            const cleanCoords = gpsString.replace(/[^\d.,-\s]/g, '').trim();
+
+            if (cleanCoords.includes(',')) {
+                const parts = cleanCoords.split(',');
+                if (parts.length >= 2) {
+                    const lat = parseFloat(parts[0].trim());
+                    const lng = parseFloat(parts[1].trim());
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        return [lat, lng];
+                    }
+                }
+            }
+
+            const spaceParts = cleanCoords.split(/\s+/);
+            if (spaceParts.length >= 2) {
+                const lat = parseFloat(spaceParts[0]);
+                const lng = parseFloat(spaceParts[1]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    return [lat, lng];
+                }
+            }
+
+            return null;
+        }
+
+        // Create popup content
+        function createPopupContent(project) {
+            const statusLabel = statusLabels[project.status] || project.status;
+            const statusClass = `popup-status-${project.status.toLowerCase()}`;
+            const progress = project.progress ? parseFloat(project.progress) : 0;
+
+            return `
+                <div class="popup-project-header">
+                    <div>
+                        <h3 class="popup-project-title">${project.project_name || 'Unnamed Project'}</h3>
+                        <div class="popup-project-id">${project.project_id || 'No ID'}</div>
+                    </div>
+                    <span class="popup-status-badge ${statusClass}">${statusLabel}</span>
+                </div>
+                <div class="popup-project-details">
+                    <div><strong>Location:</strong> ${project.location || 'Not specified'}</div>
+                    ${project.project_type ? `<div><strong>Type:</strong> ${project.project_type}</div>` : ''}
+                    <div><strong>Progress:</strong> <span style="color: ${progress >= 75 ? '#10b981' : progress >= 50 ? '#f59e0b' : '#ef4444'}; font-weight: bold;">${progress}%</span></div>
+                    ${project.start_date ? `<div><strong>Start Date:</strong> ${new Date(project.start_date).toLocaleDateString()}</div>` : ''}
+                    ${project.target_completion_date ? `<div><strong>Target Completion:</strong> ${new Date(project.target_completion_date).toLocaleDateString()}</div>` : ''}
+                    ${project.estimated_cost ? `<div><strong>Estimated Cost:</strong> ₱${parseFloat(project.estimated_cost).toLocaleString()}</div>` : ''}
+                </div>
+            `;
+        }
+
+        // Add project markers
+        function addProjectMarkers() {
+            let addedCount = 0;
+            projectsData.forEach(project => {
+                const coordinates = parseGPSCoordinates(project.gps_coordinates);
+
+                if (coordinates) {
+                    const [lat, lng] = coordinates;
+
+                    if (lat >= 4.0 && lat <= 21.0 && lng >= 116.0 && lng <= 127.0) {
+                        const marker = L.marker([lat, lng], {
+                            icon: createCustomIcon(project.status)
+                        });
+
+                        marker.projectData = project;
+                        marker.projectStatus = project.status;
+
+                        const popupContent = createPopupContent(project);
+                        marker.bindPopup(popupContent, {
+                            maxWidth: 350,
+                            className: 'custom-popup'
+                        });
+
+                        marker.on('mouseover', function() {
+                            this.openPopup();
+                        });
+
+                        allMarkers.push(marker);
+                        markerLayerGroup.addLayer(marker);
+                        addedCount++;
+                    }
+                }
+            });
+            console.log('✅ Added', addedCount, 'markers to map');
+        }
+
+        // Filter map markers by status
+        function filterMapByStatus(status) {
+            markerLayerGroup.clearLayers();
+
+            const filteredMarkers = status ?
+                allMarkers.filter(marker => marker.projectStatus === status) :
+                allMarkers;
+
+            filteredMarkers.forEach(marker => {
+                markerLayerGroup.addLayer(marker);
+            });
+
+            updateFilterStatus(status);
+
+            if (filteredMarkers.length > 0) {
+                const group = new L.featureGroup(filteredMarkers);
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+
+            currentFilter = status;
+            console.log('✅ Filtered to', filteredMarkers.length, 'markers');
+        }
+
+        // Update filter status indicator
+        function updateFilterStatus(status) {
+            const statusIndicator = document.getElementById('mapFilterStatus');
+            const filterIndicator = document.getElementById('filterIndicator');
+            const filterText = document.getElementById('filterText');
+
+            if (status && statusIndicator && filterIndicator && filterText) {
+                const statusInfo = {
+                    'PL': { color: '#f59e0b', text: 'Showing planned projects only' },
+                    'OG': { color: '#3b82f6', text: 'Showing active projects only' },
+                    'CP': { color: '#10b981', text: 'Showing completed projects only' },
+                    'CN': { color: '#ef4444', text: 'Showing cancelled projects only' }
+                };
+
+                const info = statusInfo[status];
+                if (info) {
+                    filterIndicator.style.backgroundColor = info.color;
+                    filterText.textContent = info.text;
+                    statusIndicator.classList.remove('hidden');
+                }
+            } else if (statusIndicator) {
+                if (filterText) filterText.textContent = 'Showing all projects';
+                statusIndicator.classList.add('hidden');
+            }
+        }
+
+        // Initialize markers
+        addProjectMarkers();
+
+        // Track selected status
+        let currentActiveStatus = null;
+
+        // Connect filter cards
+        document.querySelectorAll('.filter-card').forEach(card => {
+            card.addEventListener('click', function() {
+                const status = this.getAttribute('data-status');
+
+                if (currentActiveStatus === status) {
+                    filterMapByStatus(null);
+                    currentActiveStatus = null;
+
+                    document.querySelectorAll('.filter-card').forEach(c => {
+                        c.classList.remove('ring-4', 'ring-blue-200', 'scale-105');
+                        c.style.transform = '';
+                    });
+                } else {
+                    filterMapByStatus(status);
+                    currentActiveStatus = status;
+
+                    document.querySelectorAll('.filter-card').forEach(c => {
+                        c.classList.remove('ring-4', 'ring-blue-200', 'scale-105');
+                        c.style.transform = '';
+                    });
+
+                    this.classList.add('ring-4', 'ring-blue-200', 'scale-105');
+                    this.style.transform = 'translateY(-2px) scale(1.02)';
+                }
+            });
+        });
+
+        // Clear filter button
+        const clearFilterBtn = document.getElementById('clearMapFilter');
+        if (clearFilterBtn) {
+            clearFilterBtn.addEventListener('click', function() {
+                filterMapByStatus(null);
+                currentActiveStatus = null;
+
+                document.querySelectorAll('.filter-card').forEach(c => {
+                    c.classList.remove('ring-4', 'ring-blue-200', 'scale-105');
+                    c.style.transform = '';
+                });
+            });
+        }
+
+        // Fit markers button
+        const fitMarkersBtn = document.getElementById('fitMapToMarkers');
+        if (fitMarkersBtn) {
+            fitMarkersBtn.addEventListener('click', function() {
+                const visibleMarkers = currentFilter ?
+                    allMarkers.filter(marker => marker.projectStatus === currentFilter) :
+                    allMarkers;
+
+                if (visibleMarkers.length > 0) {
+                    const group = new L.featureGroup(visibleMarkers);
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+            });
+        }
+
+        // CRITICAL: Remove loading overlay and ensure container is interactive
+        setTimeout(() => {
+            const loadingEl = document.getElementById('mapLoading');
+            if (loadingEl) {
+                loadingEl.style.display = 'none';
+                loadingEl.style.pointerEvents = 'none';
+                loadingEl.style.opacity = '0';
+                loadingEl.style.zIndex = '-1';
+                loadingEl.remove(); // Completely remove it from DOM
+                console.log('✅ Loading overlay removed');
+            }
+            
+            // Ensure map container is fully interactive
+            if (mapContainer) {
+                mapContainer.style.pointerEvents = 'auto';
+                mapContainer.style.touchAction = 'auto';
+                console.log('✅ Map container made interactive');
+            }
+            
+            // Ensure leaflet container is interactive
+            const leafletContainer = mapContainer.querySelector('.leaflet-container');
+            if (leafletContainer) {
+                leafletContainer.style.pointerEvents = 'auto';
+                leafletContainer.style.touchAction = 'auto';
+                console.log('✅ Leaflet container made interactive');
+            }
+        }, 500);
+
+        // Auto-hide navigation help
+        const navHelp = document.getElementById('mapNavigationHelp');
+        if (navHelp) {
+            setTimeout(() => {
+                navHelp.style.opacity = '0';
+                setTimeout(() => navHelp.style.display = 'none', 300);
+            }, 8000);
+
+            let helpHidden = false;
+            map.on('movestart zoomstart', function() {
+                if (!helpHidden) {
+                    navHelp.style.opacity = '0.6';
+                    navHelp.style.display = 'block';
+                    setTimeout(() => {
+                        navHelp.style.opacity = '0';
+                        setTimeout(() => {
+                            navHelp.style.display = 'none';
+                            helpHidden = true;
+                        }, 300);
+                    }, 2000);
+                }
+            });
+        }
+
+        // Fit map to all markers
+        if (projectsData.length > 0) {
+            setTimeout(() => {
+                try {
+                    map.invalidateSize(true);
+
+                    const validCoords = projectsData
+                        .map(p => parseGPSCoordinates(p.gps_coordinates))
+                        .filter(coords => coords && coords[0] >= 4.0 && coords[0] <= 21.0 && coords[1] >= 116.0 && coords[1] <= 127.0);
+
+                    if (validCoords.length > 0) {
+                        const group = new L.featureGroup(validCoords.map(coords => L.marker(coords)));
+                        map.fitBounds(group.getBounds().pad(0.1));
+                        console.log('✅ Map fitted to bounds');
+                    }
+                } catch (e) {
+                    console.warn('Could not fit map bounds:', e);
+                }
+            }, 200);
+        }
+
+        // Add debug event listeners
+        map.on('movestart', () => console.log('🖱️ Map drag started'));
+        map.on('zoomstart', () => console.log('🔍 Map zoom started'));
+        map.on('click', (e) => console.log('👆 Map clicked at:', e.latlng));
+
+        // Make globally accessible
+        window.projectMap = map;
+        window.filterMapByStatus = filterMapByStatus;
+        window.projectMapInitialized = true;
+        window.projectMapInitializing = false;
+
+        console.log('✅ Map fully initialized and interactive!');
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeProjectMap);
+    } else {
+        // DOM already loaded, wait a bit for Leaflet to be ready
+        setTimeout(initializeProjectMap, 100);
+    }
+})();
+</script>
+
+
+{% endblock %}

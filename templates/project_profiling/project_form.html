@@ -1,0 +1,1394 @@
+{% extends "base.html" %}
+{% load widget_tweaks %}
+{% load static %}
+
+{% block extra_head %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+{% endblock %}
+
+{% block content %}
+<!-- Django data as JSON script for JavaScript -->
+<script id="django-data" type="application/json">
+{
+    "autoFillMode": {{ auto_fill_mode|yesno:"true,false" }},
+    "preSelectedClientId": {% if pre_selected_client.id %}"{{ pre_selected_client.id }}"{% else %}null{% endif %},
+    "preSelectedClientName": {% if pre_selected_client.company_name %}"{{ pre_selected_client.company_name|escapejs }}"{% else %}null{% endif %},
+    "preSelectedClientCompany": {% if pre_selected_client.company_name %}"{{ pre_selected_client.company_name|escapejs }}"{% else %}null{% endif %}
+}
+</script>
+
+<!-- Progress indicator -->
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="mb-8">
+        <div class="flex items-center justify-between text-sm font-medium text-gray-500 mb-4">
+            <span class="text-blue-600">Step 1</span>
+            <span>Step 2</span>
+            <span>Step 3</span>
+            <span>Complete</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2">
+            <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 25%"></div>
+        </div>
+    </div>
+
+    <!-- Header Section -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-8 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Create New Project</h1>
+                    <p class="text-gray-600 max-w-2xl">Fill out the form below to create a new project. Required fields are marked with an asterisk.</p>
+                </div>
+                <div class="hidden lg:block">
+                    <div class="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-blue-600" id="project-id-display">{{ next_id }}</div>
+                            <div class="text-sm text-gray-500">Project ID</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auto-fill notification -->
+        {% if auto_fill_mode and pre_selected_client %}
+        <div class="mx-6 mt-6">
+            <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-4">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <svg class="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-blue-800">Auto-fill Active</h3>
+                        <p class="mt-1 text-sm text-blue-700">
+                            Creating project for <strong>{{ pre_selected_client.company_name }}</strong>. 
+                            Some fields have been automatically populated based on client information.
+                        </p>
+                        <div class="mt-2">
+                            <button type="button" class="text-xs text-blue-600 hover:text-blue-500 underline" onclick="toggleAutoFillDetails()">
+                                View auto-filled fields
+                            </button>
+                        </div>
+                    </div>
+                    <div class="ml-auto pl-3">
+                        <button type="button" class="text-blue-400 hover:text-blue-600" onclick="dismissNotification(this.closest('.bg-blue-50'))">
+                            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <form method="post" class="px-6 py-8" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+
+            <!-- Project Source -->
+            <div class="mb-8">
+                <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Project Source</label>
+                            <p class="text-lg font-semibold text-gray-900">{{ source_label }}</p>
+                        </div>
+                        <div class="text-right">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Project ID</label>
+                            <p class="text-lg font-semibold text-blue-600">{{ next_id }}</p>
+                        </div>
+                    </div>
+                    <input type="hidden" name="project_source" value="{{ project_type }}">
+                    <input type="hidden" name="project_id" value="{{ next_id }}">
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="space-y-8">
+                <div class="border-b border-gray-200">
+                    <nav class="-mb-px flex space-x-8">
+                        <button type="button" class="tab-button active border-b-2 border-blue-500 py-2 px-1 text-sm font-medium text-blue-600" data-tab="basic">
+                            Basic Information
+                        </button>
+                        <button type="button" class="tab-button border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="location">
+                            Location & Timeline
+                        </button>
+                        <button type="button" class="tab-button border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="team">
+                            Team & Resources
+                        </button>
+                        <button type="button" class="tab-button border-b-2 border-transparent py-2 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="financial">
+                            Financial & Legal
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Basic Information Tab -->
+                <div class="tab-content" id="basic-tab">
+                    <div class="space-y-6">
+                        <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
+                            </svg>
+                            Basic Information
+                        </h3>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Project Name -->
+                            <div class="form-group">
+                                <label for="id_project_name" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Project Name 
+                                    <span class="text-red-500 ml-1" aria-label="required">*</span>
+                                </label>
+                                {{ form.project_name|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                {% if form.project_name.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.project_name.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Project Type -->
+                            <div class="form-group">
+                                <label for="id_project_type" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Project Type 
+                                    <span class="text-red-500 ml-1" aria-label="required">*</span>
+                                    <span class="auto-fill-indicator text-xs text-blue-600 ml-1 hidden">auto-filled</span>
+                                </label>
+                                {{ form.project_type|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                {% if form.project_type.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.project_type.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Project Category -->
+                            <div class="form-group">
+                                <label for="id_project_category" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Project Category 
+                                    <span class="text-red-500 ml-1" aria-label="required">*</span>
+                                </label>
+                                {{ form.project_category|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                {% if form.project_category.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.project_category.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Client Selection -->
+                            <div class="form-group">
+                                <label for="id_client" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Client 
+                                    <span class="text-red-500 ml-1" aria-label="required">*</span>
+                                    <span class="auto-fill-indicator text-xs text-blue-600 ml-1 hidden">auto-filled</span>
+                                </label>
+                                <div class="relative">
+                                    {{ form.client|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                    {% if pre_selected_client %}
+                                    <div class="absolute inset-y-0 right-0 pr-10 flex items-center pointer-events-none">
+                                        <svg class="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% if form.client.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.client.errors.0 }}
+                                    </p>
+                                {% endif %}
+                                {% if pre_selected_client %}
+                                <p class="mt-1 text-sm text-blue-600 flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    Pre-selected from client details
+                                </p>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Description -->
+                        <div class="form-group">
+                            <label for="id_description" class="block text-sm font-medium text-gray-700 mb-2">
+                                Project Description
+                                <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            {{ form.description|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 resize-none" }}
+                            <p class="mt-1 text-sm text-gray-500">Provide a detailed description of the project scope and objectives.</p>
+                            {% if form.description.errors %}
+                                <p class="mt-1 text-sm text-red-600 flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    {{ form.description.errors.0 }}
+                                </p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Client Details Box -->
+                        <div id="client-details-box" class="hidden">
+                            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+                                <h4 class="text-base font-semibold text-gray-800 mb-4 flex items-center">
+                                    <svg class="w-5 h-5 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    Client Information
+                                </h4>
+                                <div id="client-details-content" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                    <!-- Client details will be populated here via JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Location & Timeline Tab -->
+                <div class="tab-content hidden" id="location-tab">
+                    <div class="space-y-6">
+                        <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+                            </svg>
+                            Location & Timeline
+                        </h3>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Location -->
+                            <div class="form-group">
+                                <label for="id_location" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Location
+                                    <span class="text-red-500 ml-1" aria-label="required">*</span>
+                                </label>
+                                <div class="relative">
+                                    {{ form.location|add_class:"block w-full px-4 py-3 pr-20 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 resize-vertical" }}
+                                    <div class="absolute top-3 right-0 pr-3 flex items-start">
+                                        <button type="button" class="text-blue-500 hover:text-blue-600 text-sm font-medium flex items-center" onclick="openMapModal()">
+                                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            Map
+                                        </button>
+                                    </div>
+                                </div>
+                                {% if form.location.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.location.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <!-- City/Province -->
+                            <div class="form-group">
+                                <label for="id_city_province" class="block text-sm font-medium text-gray-700 mb-2">
+                                    City / Province 
+                                    <span class="text-red-500 ml-1" aria-label="required">*</span>
+                                </label>
+                                {{ form.city_province|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                {% if form.city_province.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.city_province.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Start Date -->
+                            <div class="form-group">
+                                <label for="id_start_date" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Start Date 
+                                    <span class="text-red-500 ml-1" aria-label="required">*</span>
+                                </label>
+                                {{ form.start_date|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                {% if form.start_date.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.start_date.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Target Completion Date -->
+                            <div class="form-group">
+                                <label for="id_target_completion_date" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Target Completion Date 
+                                    <span class="text-gray-500 text-xs">(Optional)</span>
+                                </label>
+                                {{ form.target_completion_date|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                {% if form.target_completion_date.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.target_completion_date.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- GPS Coordinates -->
+                        <div class="form-group">
+                            <label for="id_gps_coordinates" class="block text-sm font-medium text-gray-700 mb-2">
+                                GPS Coordinates
+                                <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            {{ form.gps_coordinates|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                            <p class="mt-1 text-sm text-gray-500">Format: latitude, longitude (e.g., 40.7128, -74.0060)</p>
+                            {% if form.gps_coordinates.errors %}
+                                <p class="mt-1 text-sm text-red-600 flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.gps_coordinates.errors.0 }}
+                                    </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Team & Resources Tab -->
+                <div class="tab-content hidden" id="team-tab">
+                    <div class="space-y-6">
+                        <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"></path>
+                            </svg>
+                            Team & Resources
+                        </h3>
+
+                        <!-- Employee Assignments Section -->
+                        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-6">
+                            <h4 class="text-base font-semibold text-gray-900 mb-6 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                Employee Assignments
+                            </h4>
+                            <p class="text-sm text-gray-600 mb-6">Assign employees to key project roles. Only active employees with the corresponding roles will be shown in the dropdowns.</p>
+
+                            <!-- Project Manager -->
+                            <div class="form-group mb-6" id="pm_container">
+                                <label for="project_manager_input" class="block text-sm font-medium text-gray-700 mb-2">
+    <span class="flex items-cenpiter">
+        <svg class="w-4 h-4 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+        </svg>
+        <span>Project Manager</span>
+        <span class="text-red-500 ml-1" aria-label="required">*</span>
+    </span>
+</label>
+
+
+                                <div class="relative">
+                                    <input type="text"
+                                           id="project_manager_input"
+                                           class="block w-full px-4 py-3 pr-10 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                                           placeholder="Search for a project manager..."
+                                           autocomplete="off"
+                                           value="{{ form.instance.project_manager.full_name|default:'' }}">
+                                           <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                        <svg class="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"></path>
+                                        </svg>
+                                    </div>
+
+                                    <!-- Hidden field for form submission -->
+                                    <input type="hidden"
+                                           id="project_manager_id"
+                                           name="project_manager"
+                                           value="{{ form.instance.project_manager.id|default:'' }}">
+                                </div>
+
+                                <!-- Suggestions dropdown -->
+                                <ul id="pm_suggestions" class="absolute w-full bg-white border border-gray-300 rounded-lg mt-1 hidden max-h-64 overflow-y-auto z-50 shadow-lg">
+                                    <!-- Suggestions will be populated here -->
+                                </ul>
+
+                                <!-- Selected PM Display -->
+                                <div id="assigned_pm_display" class="mt-3">
+                                    {% if form.instance.project_manager %}
+                                    <div class="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                                        <div class="flex-shrink-0">
+                                            <svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                            </svg>
+                                        </div>
+                                        <div class="ml-3">
+                                            <p class="text-sm font-medium text-green-800">
+                                                Assigned to: {{ form.instance.project_manager.full_name }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <div class="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                        <div class="flex-shrink-0">
+                                            <svg class="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                            </svg>
+                                        </div>
+                                        <div class="ml-3">
+                                            <p class="text-sm font-medium text-gray-600">
+                                                No Project Manager Assigned
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                {% if form.project_manager.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.project_manager.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Employee Role Grid -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <!-- Project In Charge -->
+                                <div class="form-group">
+                                    <label for="id_project_in_charge" class="block text-sm font-medium text-gray-700 mb-2">
+                                        <span class="flex items-center">
+                                            <svg class="w-4 h-4 mr-2 text-indigo-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            Project In Charge (PIC)
+                                        </span>
+                                        <span class="text-gray-500 text-xs font-normal">(Optional)</span>
+                                    </label>
+                                    {{ form.project_in_charge|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                    {% if form.project_in_charge.errors %}
+                                        <p class="mt-1 text-sm text-red-600 flex items-center">
+                                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            {{ form.project_in_charge.errors.0 }}
+                                        </p>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Safety Officer -->
+                                <div class="form-group">
+                                    <label for="id_safety_officer" class="block text-sm font-medium text-gray-700 mb-2">
+                                        <span class="flex items-center">
+                                            <svg class="w-4 h-4 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            Safety Officer (SO)
+                                        </span>
+                                        <span class="text-gray-500 text-xs font-normal">(Optional)</span>
+                                    </label>
+                                    {{ form.safety_officer|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                    {% if form.safety_officer.errors %}
+                                        <p class="mt-1 text-sm text-red-600 flex items-center">
+                                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            {{ form.safety_officer.errors.0 }}
+                                        </p>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Quality Assurance Officer -->
+                                <div class="form-group">
+                                    <label for="id_quality_assurance_officer" class="block text-sm font-medium text-gray-700 mb-2">
+                                        <span class="flex items-center">
+                                            <svg class="w-4 h-4 mr-2 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            Quality Assurance (QA)
+                                        </span>
+                                        <span class="text-gray-500 text-xs font-normal">(Optional)</span>
+                                    </label>
+                                    {{ form.quality_assurance_officer|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                    {% if form.quality_assurance_officer.errors %}
+                                        <p class="mt-1 text-sm text-red-600 flex items-center">
+                                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            {{ form.quality_assurance_officer.errors.0 }}
+                                        </p>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Quality Officer -->
+                                <div class="form-group">
+                                    <label for="id_quality_officer" class="block text-sm font-medium text-gray-700 mb-2">
+                                        <span class="flex items-center">
+                                            <svg class="w-4 h-4 mr-2 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                            Quality Officer (QO)
+                                        </span>
+                                        <span class="text-gray-500 text-xs font-normal">(Optional)</span>
+                                    </label>
+                                    {{ form.quality_officer|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                    {% if form.quality_officer.errors %}
+                                        <p class="mt-1 text-sm text-red-600 flex items-center">
+                                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            {{ form.quality_officer.errors.0 }}
+                                        </p>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Foreman -->
+                                <div class="form-group">
+                                    <label for="id_foreman" class="block text-sm font-medium text-gray-700 mb-2">
+                                        <span class="flex items-center">
+                                            <svg class="w-4 h-4 mr-2 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            Foreman (FM)
+                                        </span>
+                                        <span class="text-gray-500 text-xs font-normal">(Optional)</span>
+                                    </label>
+                                    {{ form.foreman|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                    {% if form.foreman.errors %}
+                                        <p class="mt-1 text-sm text-red-600 flex items-center">
+                                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            {{ form.foreman.errors.0 }}
+                                        </p>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Number of Laborers -->
+                                <div class="form-group">
+                                    <label for="id_number_of_laborers" class="block text-sm font-medium text-gray-700 mb-2">
+                                        <span class="flex items-center">
+                                            <svg class="w-4 h-4 mr-2 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                                <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"></path>
+                                            </svg>
+                                            Number of Laborers
+                                        </span>
+                                        <span class="text-gray-500 text-xs font-normal">(Optional)</span>
+                                    </label>
+                                    {{ form.number_of_laborers|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                    <p class="mt-1 text-sm text-gray-500">Total laborers required for this project</p>
+                                    {% if form.number_of_laborers.errors %}
+                                        <p class="mt-1 text-sm text-red-600 flex items-center">
+                                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                            </svg>
+                                            {{ form.number_of_laborers.errors.0 }}
+                                        </p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Other Team Fields -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Project Status -->
+                            <div class="form-group">
+                                <label for="id_status" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Project Status
+                                </label>
+                                {{ form.status|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                {% if form.status.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.status.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Financial & Legal Tab -->
+                <div class="tab-content hidden" id="financial-tab">
+                    <div class="space-y-6">
+                        <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zM14 6a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2h6zM4 14a2 2 0 002 2h8a2 2 0 002-2v-2H4v2z"></path>
+                            </svg>
+                            Financial & Legal Information
+                        </h3>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Estimated Cost -->
+                            <div class="form-group">
+                                <label for="id_estimated_cost" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Estimated Cost 
+                                    <span class="text-gray-500 text-xs">(Optional)</span>
+                                </label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <span class="text-gray-500 sm:text-sm">₱</span>
+                                    </div>
+                                    {{ form.estimated_cost|add_class:"block w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                </div>
+                                {% if form.estimated_cost.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.estimated_cost.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Payment Terms -->
+                            <div class="form-group">
+                                <label for="id_payment_terms" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Payment Terms 
+                                    <span class="auto-fill-indicator text-xs text-blue-600 ml-1 hidden">auto-filled</span>
+                                </label>
+                                {{ form.payment_terms|add_class:"block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200" }}
+                                {% if form.payment_terms.errors %}
+                                    <p class="mt-1 text-sm text-red-600 flex items-center">
+                                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                        </svg>
+                                        {{ form.payment_terms.errors.0 }}
+                                    </p>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Document Upload Information Banner -->
+<div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg mb-6">
+    <div class="flex">
+        <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+            </svg>
+        </div>
+        <div class="ml-3">
+            <h3 class="text-sm font-medium text-blue-800">
+                Document Upload
+            </h3>
+            <div class="mt-2 text-sm text-blue-700">
+                <p>Documents such as contracts, permits, and licenses can be uploaded after project creation through the <strong>Document Library</strong>.</p>
+                <p class="mt-1">After creating this project, you'll be able to:</p>
+                <ul class="list-disc list-inside mt-1 ml-2">
+                    <li>Upload unlimited documents with version control</li>
+                    <li>Categorize documents by type and project stage</li>
+                    <li>Track who uploaded documents and when</li>
+                    <li>Access all project documents in one centralized location</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="mt-12 pt-8 border-t border-gray-200">
+                <div class="flex items-center justify-between">
+                    <!-- Previous/Next Navigation -->
+                    <div class="flex space-x-3">
+                        <button type="button" id="prev-tab" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            Previous
+                        </button>
+                        <button type="button" id="next-tab" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors duration-200">
+                            Next
+                            <svg class="w-4 h-4 ml-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex items-center space-x-3">
+                        <button type="button" id="save-draft-btn" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 transition-colors duration-200">
+    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+    </svg>
+    Save as Draft
+</button>
+                        <button type="button" onclick="window.submitForm()" class="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl">
+    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+    </svg>
+    Create Project
+</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Toast Notification Container -->
+<div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 hidden">
+    <div class="flex items-center justify-center min-h-screen">
+        <div class="bg-white rounded-lg p-6 shadow-xl">
+            <div class="flex items-center">
+                <svg class="animate-spin h-6 w-6 text-blue-600 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-gray-700 font-medium">Creating project...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Map Modal -->
+<div id="mapModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 hidden">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl h-5/6 flex flex-col">
+            <!-- Modal Header -->
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200 rounded-t-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Select Project Location</h3>
+                        <p class="text-sm text-gray-600">Click on the map to set the project location</p>
+                    </div>
+                    <button type="button" onclick="closeMapModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Map Container -->
+            <div class="flex-1 relative">
+                <div id="projectLocationMap" class="w-full h-full"></div>
+
+                <!-- Map Controls -->
+                <div class="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-3 space-y-2">
+                    <button type="button" onclick="getCurrentLocationForMap()" class="w-full px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors">
+                        <svg class="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Current Location
+                    </button>
+                    <button type="button" onclick="searchLocationOnMap()" class="w-full px-3 py-2 bg-gray-600 text-white text-sm rounded-md hover:bg-gray-700 transition-colors">
+                        <svg class="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"></path>
+                        </svg>
+                        Search
+                    </button>
+                </div>
+
+                <!-- Search Box -->
+                <div id="mapSearchBox" class="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-3 w-80 hidden">
+                    <input type="text" id="mapSearchInput" placeholder="Search for a location in Philippines..."
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                    <div class="mt-2 flex space-x-2">
+                        <button type="button" onclick="performMapSearch()" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Search</button>
+                        <button type="button" onclick="hideMapSearch()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-gray-50 px-6 py-4 border-t border-gray-200 rounded-b-lg">
+                <div class="flex items-center justify-between">
+                    <div class="text-sm text-gray-600">
+                        <span id="selectedLocationInfo">Click on the map to select a location</span>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button type="button" onclick="closeMapModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button type="button" onclick="confirmLocation()" id="confirmLocationBtn" disabled
+                                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Confirm Location
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Enhanced form styling */
+.form-group {
+    position: relative;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Auto-fill styling with animation */
+.auto-filled {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+    border-color: #3b82f6 !important;
+    animation: autoFillPulse 2s ease-in-out;
+}
+
+@keyframes autoFillPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+.auto-fill-indicator {
+    display: inline-block;
+    padding: 2px 6px;
+    background-color: #dbeafe;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+/* Tab styling */
+.tab-button.active {
+    color: #2563eb;
+    border-color: #2563eb;
+}
+
+.tab-content {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Enhanced dropdown styling */
+#pm_suggestions {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+#pm_suggestions li {
+    padding: 12px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #f3f4f6;
+    transition: all 0.2s ease;
+}
+
+#pm_suggestions li:hover {
+    background-color: #f8fafc;
+    transform: translateX(4px);
+}
+
+#pm_suggestions li:last-child {
+    border-bottom: none;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .grid.grid-cols-1.md\\:grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+    
+    .tab-button {
+        font-size: 0.875rem;
+        padding: 0.5rem 0.25rem;
+    }
+    
+    .flex.items-center.justify-between {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .flex.items-center.space-x-3 {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+/* Custom scrollbar for dropdown */
+#pm_suggestions::-webkit-scrollbar {
+    width: 6px;
+}
+
+#pm_suggestions::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+#pm_suggestions::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+#pm_suggestions::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Map modal and container styling */
+#mapModal .flex-1 {
+    min-height: 400px;
+}
+
+#projectLocationMap {
+    height: 100% !important;
+    min-height: 400px !important;
+    width: 100% !important;
+    z-index: 1;
+}
+
+/* Ensure map modal has proper dimensions */
+#mapModal .max-w-4xl {
+    height: 80vh;
+    min-height: 500px;
+}
+
+/* Map controls positioning */
+#mapModal .absolute {
+    z-index: 1000;
+}
+</style>
+
+<script>
+// Global functions for template callbacks
+window.toggleAutoFillDetails = function() {
+    console.log('Auto-fill details feature coming soon');
+};
+
+window.dismissNotification = function(element) {
+    element.style.transform = 'translateX(100%)';
+    element.style.opacity = '0';
+    setTimeout(() => element.remove(), 300);
+};
+
+window.getCurrentLocation = function() {
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                const lat = position.coords.latitude.toFixed(6);
+                const lng = position.coords.longitude.toFixed(6);
+                const coordsInput = document.getElementById('id_gps_coordinates');
+                if (coordsInput) {
+                    coordsInput.value = lat + ', ' + lng;
+                    console.log('Location captured successfully');
+                }
+            },
+            function(error) {
+                console.log('Unable to get current location');
+            }
+        );
+    } else {
+        console.log('Geolocation is not supported by this browser');
+    }
+};
+
+// Note: uploadContract and uploadPermits functions removed
+// Documents are now managed through the centralized Document Library
+
+// Simple tab navigation functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const prevButton = document.getElementById('prev-tab');
+    const nextButton = document.getElementById('next-tab');
+    
+    let currentTab = 0;
+    const tabs = ['basic', 'location', 'team', 'financial'];
+    
+    function showTab(index) {
+        // Hide all tab contents
+        tabContents.forEach(content => content.classList.add('hidden'));
+        
+        // Remove active class from all buttons
+        tabButtons.forEach(button => {
+            button.classList.remove('active', 'text-blue-600', 'border-blue-500');
+            button.classList.add('text-gray-500', 'border-transparent');
+        });
+        
+        // Show current tab content
+        const currentContent = document.getElementById(tabs[index] + '-tab');
+        if (currentContent) {
+            currentContent.classList.remove('hidden');
+        }
+        
+        // Activate current button
+        const currentButton = document.querySelector(`[data-tab="${tabs[index]}"]`);
+        if (currentButton) {
+            currentButton.classList.add('active', 'text-blue-600', 'border-blue-500');
+            currentButton.classList.remove('text-gray-500', 'border-transparent');
+        }
+        
+        // Update navigation buttons
+        prevButton.disabled = index === 0;
+        
+        // Hide Next button on last tab
+        if (index === tabs.length - 1) {
+            nextButton.style.display = 'none';
+        } else {
+            nextButton.style.display = 'inline-flex';
+            nextButton.innerHTML = 'Next <svg class="w-4 h-4 ml-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path></svg>';
+        }
+        
+        currentTab = index;
+    }
+    
+    // Tab button click handlers
+    tabButtons.forEach((button, index) => {
+        button.addEventListener('click', () => {
+            showTab(index);
+        });
+    });
+    
+    // Previous button
+    prevButton.addEventListener('click', () => {
+        if (currentTab > 0) {
+            showTab(currentTab - 1);
+        }
+    });
+    
+    // Next button
+    nextButton.addEventListener('click', () => {
+        if (currentTab < tabs.length - 1) {
+            showTab(currentTab + 1);
+        }
+    });
+    
+    // Initialize first tab
+    showTab(0);
+});
+</script>
+
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+<!-- Map Functionality Script -->
+<script>
+let projectMap = null;
+let currentMarker = null;
+let selectedLocation = null;
+
+// Philippines bounds
+const philippinesBounds = [
+    [4.2158064, 114.0952145], // Southwest
+    [21.3217806, 127.6444784]  // Northeast
+];
+
+// Center of Philippines (approximately Manila)
+const philippinesCenter = [14.5995, 120.9842];
+
+function openMapModal() {
+    const modal = document.getElementById('mapModal');
+    modal.classList.remove('hidden');
+
+    // Initialize map if not already done
+    if (!projectMap) {
+        setTimeout(() => {
+            initializeMap();
+        }, 200);
+    } else {
+        // Refresh the map size
+        setTimeout(() => {
+            projectMap.invalidateSize();
+        }, 200);
+    }
+}
+
+function closeMapModal() {
+    const modal = document.getElementById('mapModal');
+    modal.classList.add('hidden');
+}
+
+function initializeMap() {
+    const mapContainer = document.getElementById('projectLocationMap');
+
+    if (projectMap) {
+        projectMap.remove();
+    }
+
+    // Ensure container has proper dimensions
+    mapContainer.style.height = '400px';
+    mapContainer.style.width = '100%';
+
+    // Initialize map centered on Philippines
+    projectMap = L.map('projectLocationMap', {
+        center: philippinesCenter,
+        zoom: 6,
+        maxBounds: philippinesBounds,
+        maxBoundsViscosity: 1.0
+    });
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+    }).addTo(projectMap);
+
+    // Force resize after a short delay
+    setTimeout(() => {
+        projectMap.invalidateSize();
+    }, 100);
+
+    // Add click event to map
+    projectMap.on('click', function(e) {
+        setMapMarker(e.latlng);
+    });
+
+    // Check if there are existing coordinates in the form
+    const existingCoords = document.getElementById('id_gps_coordinates').value;
+    if (existingCoords && existingCoords.trim()) {
+        const coords = existingCoords.split(',').map(coord => parseFloat(coord.trim()));
+        if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+            const latlng = L.latLng(coords[0], coords[1]);
+            setMapMarker(latlng);
+            projectMap.setView(latlng, 15);
+        }
+    }
+}
+
+function setMapMarker(latlng) {
+    // Remove existing marker
+    if (currentMarker) {
+        projectMap.removeLayer(currentMarker);
+    }
+
+    // Add new marker
+    currentMarker = L.marker(latlng, {
+        draggable: true
+    }).addTo(projectMap);
+
+    // Make marker draggable
+    currentMarker.on('dragend', function(e) {
+        const newPosition = e.target.getLatLng();
+        selectedLocation = newPosition;
+        updateLocationInfo(newPosition);
+        reverseGeocode(newPosition);
+    });
+
+    selectedLocation = latlng;
+    updateLocationInfo(latlng);
+    reverseGeocode(latlng);
+
+    // Enable confirm button
+    document.getElementById('confirmLocationBtn').disabled = false;
+}
+
+function updateLocationInfo(latlng) {
+    const infoSpan = document.getElementById('selectedLocationInfo');
+    infoSpan.textContent = `Selected: ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`;
+}
+
+function reverseGeocode(latlng) {
+    // Use Nominatim reverse geocoding service
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}&zoom=18&addressdetails=1&countrycodes=ph`;
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.display_name) {
+                selectedLocation.address = data.display_name;
+                selectedLocation.city = data.address?.city || data.address?.town || data.address?.municipality || '';
+                selectedLocation.province = data.address?.state || data.address?.province || '';
+
+                // Update the info display
+                const infoSpan = document.getElementById('selectedLocationInfo');
+                infoSpan.textContent = `Selected: ${data.display_name}`;
+            }
+        })
+        .catch(error => {
+            console.log('Geocoding error:', error);
+        });
+}
+
+function getCurrentLocationForMap() {
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
+                setMapMarker(latlng);
+                projectMap.setView(latlng, 15);
+            },
+            function(error) {
+                alert('Unable to get current location. Please select manually on the map.');
+                console.log('Geolocation error:', error);
+            }
+        );
+    } else {
+        alert('Geolocation is not supported by this browser.');
+    }
+}
+
+function searchLocationOnMap() {
+    const searchBox = document.getElementById('mapSearchBox');
+    searchBox.classList.remove('hidden');
+    document.getElementById('mapSearchInput').focus();
+}
+
+function hideMapSearch() {
+    const searchBox = document.getElementById('mapSearchBox');
+    searchBox.classList.add('hidden');
+    document.getElementById('mapSearchInput').value = '';
+}
+
+function performMapSearch() {
+    const query = document.getElementById('mapSearchInput').value.trim();
+    if (!query) return;
+
+    // Use Nominatim geocoding service (restricted to Philippines)
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ph&limit=5&addressdetails=1`;
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                const result = data[0];
+                const latlng = L.latLng(parseFloat(result.lat), parseFloat(result.lon));
+                setMapMarker(latlng);
+                projectMap.setView(latlng, 15);
+                hideMapSearch();
+            } else {
+                alert('Location not found. Please try a different search term.');
+            }
+        })
+        .catch(error => {
+            console.log('Search error:', error);
+            alert('Search failed. Please try again.');
+        });
+}
+
+function confirmLocation() {
+    if (!selectedLocation) return;
+
+    // Update GPS coordinates field
+    const gpsField = document.getElementById('id_gps_coordinates');
+    gpsField.value = `${selectedLocation.lat.toFixed(6)}, ${selectedLocation.lng.toFixed(6)}`;
+
+    // Update location field if address is available
+    if (selectedLocation.address) {
+        const locationField = document.getElementById('id_location');
+        locationField.value = selectedLocation.address;
+    }
+
+    // Update city/province field if available
+    if (selectedLocation.city || selectedLocation.province) {
+        const cityProvinceField = document.getElementById('id_city_province');
+        const cityProvince = [selectedLocation.city, selectedLocation.province].filter(Boolean).join(', ');
+        if (cityProvince && !cityProvinceField.value) {
+            cityProvinceField.value = cityProvince;
+        }
+    }
+
+    // Close modal
+    closeMapModal();
+
+    // Show success message
+    showToast('Location selected successfully!', 'success');
+}
+
+// Enhanced existing getCurrentLocation function
+window.getCurrentLocation = function() {
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                const lat = position.coords.latitude.toFixed(6);
+                const lng = position.coords.longitude.toFixed(6);
+                const coordsInput = document.getElementById('id_gps_coordinates');
+                if (coordsInput) {
+                    coordsInput.value = lat + ', ' + lng;
+
+                    // Also try to reverse geocode for address
+                    reverseGeocode(L.latLng(lat, lng));
+                }
+            },
+            function(error) {
+                console.log('Unable to get current location');
+            }
+        );
+    } else {
+        console.log('Geolocation is not supported by this browser');
+    }
+};
+
+// Add toast notification function
+function showToast(message, type = 'info') {
+    const toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) return;
+
+    const toast = document.createElement('div');
+    toast.className = `max-w-xs bg-white border border-gray-200 rounded-xl shadow-lg ${type === 'success' ? 'border-green-200' : ''}`;
+    toast.innerHTML = `
+        <div class="flex p-4">
+            <div class="flex-shrink-0">
+                ${type === 'success' ?
+                    '<svg class="h-4 w-4 text-green-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.061L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>' :
+                    '<svg class="h-4 w-4 text-blue-500 mt-0.5" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>'
+                }
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-gray-700">${message}</p>
+            </div>
+            <div class="ml-auto">
+                <button type="button" class="inline-flex flex-shrink-0 justify-center items-center h-5 w-5 rounded-lg text-gray-800 opacity-50 hover:opacity-100" onclick="this.closest('.max-w-xs').remove()">
+                    <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 6-12 12"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+        </div>
+    `;
+
+    toastContainer.appendChild(toast);
+
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.remove();
+        }
+    }, 5000);
+}
+
+// Handle Enter key in search input
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('mapSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                performMapSearch();
+            }
+        });
+    }
+});
+</script>
+
+<!-- External Scripts -->
+<script src="{% static 'js/project_form_autofill.js' %}"></script>
+<script src="{% static 'js/assigned_to.js' %}"></script>
+<script src="{% static 'js/project_form_enhanced.js' %}"></script>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Additional scripts can be added here -->
+{% endblock %}

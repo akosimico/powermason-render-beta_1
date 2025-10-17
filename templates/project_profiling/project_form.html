@@ -2289,6 +2289,7 @@ function getDetailedBOQPreviewHTML(data) {
                                     <th class="px-3 py-2 text-left">Item</th>
                                     <th class="px-3 py-2 text-left">Description</th>
                                     <th class="px-3 py-2 text-left">Section</th>
+                                    <th class"px-3 py-2 text-left">UOM</th>
                                     <th class="px-3 py-2 text-right">Qty</th>
                                     <th class="px-3 py-2 text-right">Unit Cost</th>
                                     <th class="px-3 py-2 text-right">Total</th>
@@ -2301,6 +2302,7 @@ function getDetailedBOQPreviewHTML(data) {
                                         <td class="px-3 py-2 font-medium">${item.item_number || ''}</td>
                                         <td class="px-3 py-2">${item.description || ''}</td>
                                         <td class="px-3 py-2">${item.section || ''}</td>
+                                        <td class="px-3 py-2">${item.uom || ''}</td>
                                         <td class="px-3 py-2 text-right">${parseFloat(item.quantity || 0).toLocaleString()}</td>
                                         <td class="px-3 py-2 text-right">₱${parseFloat(item.unit_cost || 0).toLocaleString()}</td>
                                         <td class="px-3 py-2 text-right font-medium">₱${parseFloat(item.total_cost || 0).toLocaleString()}</td>

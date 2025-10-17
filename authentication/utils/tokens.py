@@ -57,21 +57,48 @@ def verify_user_token(request, token=None, expected_role=None, max_age=None):
     if valid, else returns None and adds an error message.
 
     If token is None, attempts to retrieve it from session['dashboard_token'].
+    If no token is found, attempts to generate one for the authenticated user.
     """
     # If token is None, try to get it from session
     if token is None:
         token = request.session.get('dashboard_token')
         if not token:
-            messages.error(request, "No active session. Please log in again.")
-            return None
+            # If no token in session but user is authenticated, try to generate one
+            if request.user.is_authenticated:
+                try:
+                    profile, created = UserProfile.objects.get_or_create(user=request.user)
+                    token = make_dashboard_token(profile)
+                    request.session['dashboard_token'] = token
+                    request.session.save()
+                except Exception as e:
+                    messages.error(request, "Unable to generate session token. Please log in again.")
+                    return None
+            else:
+                messages.error(request, "No active session. Please log in again.")
+                return None
 
     try:
         payload = parse_dashboard_token(token, max_age=max_age)
         user_id = payload["u"]
         token_role = payload["r"]
     except SignatureExpired:
-        messages.error(request, "Your session token has expired.")
-        return None
+        # Try to generate a new token if the current one is expired
+        if request.user.is_authenticated:
+            try:
+                profile, created = UserProfile.objects.get_or_create(user=request.user)
+                token = make_dashboard_token(profile)
+                request.session['dashboard_token'] = token
+                request.session.save()
+                # Retry with new token
+                payload = parse_dashboard_token(token, max_age=max_age)
+                user_id = payload["u"]
+                token_role = payload["r"]
+            except Exception as e:
+                messages.error(request, "Your session token has expired and could not be renewed. Please log in again.")
+                return None
+        else:
+            messages.error(request, "Your session token has expired. Please log in again.")
+            return None
     except BadSignature:
         messages.error(request, "Invalid token. Access denied.")
         return None

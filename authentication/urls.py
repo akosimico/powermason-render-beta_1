@@ -27,7 +27,7 @@ urlpatterns = [
 
     path('accounts/password/change/', CustomPasswordChangeView.as_view(), name='account_change_password'),
 
-    # Token optional patterns
+    # User management - Session-based (primary) and Token-based (legacy)
     path('manage-user-profiles/', views.manage_user_profiles, name='manage_user_profiles_session'),
     path('manage-user-profiles/<str:token>/', views.manage_user_profiles, name='manage_user_profiles'),
 
@@ -45,13 +45,12 @@ urlpatterns = [
     path('unarchive-user/<int:user_id>/', views.unarchive_user, name='unarchive_user_session'),
     path('unarchive-user/<str:token>/<int:user_id>/', views.unarchive_user, name='unarchive_user'),
 
+    # Profile management
     path('clear-welcome-flag/', views.clear_welcome_flag, name='clear_welcome_flag'),
-
     path('update-profile-name/', views.update_profile_name, name='update_profile_name'),
-
     path('update-avatar/', views.update_avatar, name='update_avatar'),
-
     path('update-profile-email/', views.update_profile_email, name='update_profile_email'),
 
+    # API endpoints
     path('api/dashboard/', views.dashboard_api, name='dashboard_api'),
 ]

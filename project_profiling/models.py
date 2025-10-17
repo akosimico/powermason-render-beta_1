@@ -12,6 +12,79 @@ class ProjectType(models.Model):
     code = models.CharField(max_length=10, unique=True)  # e.g., 'GC', 'DC', 'RES'
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    
+    # Cost estimation configuration
+    base_cost_low_end = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="Base cost per sqm for low-end projects (PHP)"
+    )
+    base_cost_mid_range = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="Base cost per sqm for mid-range projects (PHP)"
+    )
+    base_cost_high_end = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="Base cost per sqm for high-end projects (PHP)"
+    )
+    
+    # Cost breakdown percentages (should add up to 100%)
+    materials_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=40.00,
+        help_text="Percentage of total cost for materials"
+    )
+    labor_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=30.00,
+        help_text="Percentage of total cost for labor"
+    )
+    equipment_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=10.00,
+        help_text="Percentage of total cost for equipment"
+    )
+    permits_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=5.00,
+        help_text="Percentage of total cost for permits"
+    )
+    contingency_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=10.00,
+        help_text="Percentage of total cost for contingency"
+    )
+    overhead_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=5.00,
+        help_text="Percentage of total cost for overhead"
+    )
+    
+    # Cost learning tracking fields
+    total_projects_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of projects contributing to cost data"
+    )
+    last_cost_update = models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="Timestamp of last cost data update"
+    )
+    
     created_by = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
@@ -26,6 +99,217 @@ class ProjectType(models.Model):
     
     def get_usage_count(self):
         return self.projects.count()
+    
+    def get_base_cost(self, complexity_level='mid_range'):
+        """Get base cost for specific complexity level"""
+        cost_mapping = {
+            'low_end': self.base_cost_low_end,
+            'mid_range': self.base_cost_mid_range,
+            'high_end': self.base_cost_high_end,
+        }
+        return cost_mapping.get(complexity_level, self.base_cost_mid_range)
+    
+    def get_cost_breakdown(self):
+        """Get cost breakdown as dictionary"""
+        return {
+            'materials': self.materials_percentage / 100,
+            'labor': self.labor_percentage / 100,
+            'equipment': self.equipment_percentage / 100,
+            'permits': self.permits_percentage / 100,
+            'contingency': self.contingency_percentage / 100,
+            'overhead': self.overhead_percentage / 100,
+        }
+    
+    def clean(self):
+        """Validate that percentages add up to 100%"""
+        from django.core.exceptions import ValidationError
+        
+        total = (
+            self.materials_percentage + 
+            self.labor_percentage + 
+            self.equipment_percentage + 
+            self.permits_percentage + 
+            self.contingency_percentage + 
+            self.overhead_percentage
+        )
+        
+        if abs(total - 100) > 0.01:  # Allow small rounding differences
+            raise ValidationError(f"Cost breakdown percentages must add up to 100%. Current total: {total}%")
+    
+    def has_cost_configuration(self):
+        """Check if this project type has cost configuration"""
+        return any([
+            self.base_cost_low_end,
+            self.base_cost_mid_range,
+            self.base_cost_high_end
+        ])
+    
+    def has_learned_costs(self):
+        """Check if this project type has learned costs from actual projects"""
+        return self.total_projects_count > 0
+    
+    def get_confidence_level(self):
+        """Get confidence level based on number of contributing projects"""
+        if self.total_projects_count == 0:
+            return "No Data"
+        elif self.total_projects_count < 3:
+            return "Low"
+        elif self.total_projects_count < 10:
+            return "Medium"
+        else:
+            return "High"
+
+
+class ProjectTypeCostHistory(models.Model):
+    """
+    Track cost data from individual projects to build learning database
+    """
+    
+    SOURCE_CHOICES = [
+        ('boq_upload', 'BOQ Upload'),
+        ('project_completion', 'Project Completion'),
+        ('manual_entry', 'Manual Entry'),
+    ]
+    
+    COMPLEXITY_LEVELS = [
+        ('low_end', 'Low End'),
+        ('mid_range', 'Mid Range'),
+        ('high_end', 'High End'),
+    ]
+    
+    project_type = models.ForeignKey(
+        ProjectType, 
+        on_delete=models.CASCADE, 
+        related_name='cost_history'
+    )
+    project = models.ForeignKey(
+        'ProjectProfile', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='cost_contributions'
+    )
+    
+    # Cost data
+    lot_size = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        help_text="Lot size in square meters"
+    )
+    total_cost = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2,
+        help_text="Total project cost in PHP"
+    )
+    cost_per_sqm = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        help_text="Cost per square meter"
+    )
+    
+    # Cost breakdown
+    materials_cost = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2, 
+        default=0,
+        help_text="Materials cost"
+    )
+    labor_cost = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2, 
+        default=0,
+        help_text="Labor cost"
+    )
+    equipment_cost = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2, 
+        default=0,
+        help_text="Equipment cost"
+    )
+    permits_cost = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2, 
+        default=0,
+        help_text="Permits and fees cost"
+    )
+    contingency_cost = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2, 
+        default=0,
+        help_text="Contingency cost"
+    )
+    overhead_cost = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2, 
+        default=0,
+        help_text="Overhead cost"
+    )
+    
+    # Context for better predictions
+    location = models.CharField(
+        max_length=200, 
+        blank=True,
+        help_text="Project location"
+    )
+    project_category = models.CharField(
+        max_length=10, 
+        blank=True,
+        help_text="Project category (PUB, PRI, REN, NEW)"
+    )
+    complexity_level = models.CharField(
+        max_length=10, 
+        choices=COMPLEXITY_LEVELS,
+        default='mid_range',
+        help_text="Project complexity level"
+    )
+    
+    # Role support
+    project_role = models.CharField(
+        max_length=20,
+        choices=[
+            ('general_contractor', 'General Contractor'),
+            ('subcontractor', 'Subcontractor')
+        ],
+        default='general_contractor',
+        help_text="Role of the company in this project"
+    )
+    
+    # Metadata
+    source = models.CharField(
+        max_length=20, 
+        choices=SOURCE_CHOICES,
+        default='boq_upload',
+        help_text="Source of cost data"
+    )
+    is_approved = models.BooleanField(
+        default=False,
+        help_text="Whether this cost data is approved for learning"
+    )
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="When this data was uploaded"
+    )
+    approved_at = models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="When this data was approved"
+    )
+    
+    class Meta:
+        ordering = ['-uploaded_at']
+        verbose_name = 'Project Type Cost History'
+        verbose_name_plural = 'Project Type Cost Histories'
+    
+    def __str__(self):
+        project_name = self.project.project_name if self.project else "BOQ Upload"
+        return f"{self.project_type.name} - {project_name} ({self.total_cost:,.2f} PHP)"
+    
+    def save(self, *args, **kwargs):
+        # Calculate cost per sqm
+        if self.lot_size and self.total_cost:
+            self.cost_per_sqm = self.total_cost / self.lot_size
+        super().save(*args, **kwargs)
+
 
 class Expense(models.Model):
     EXPENSE_TYPES = [
@@ -117,11 +401,18 @@ class ProjectProfile(models.Model):
     description = models.TextField(blank=True, null=True)
 
     # ----------------------------
-    # 4. Location
+    # 4. Location & Site Details
     # ----------------------------
     location = models.CharField(max_length=300)
     gps_coordinates = models.CharField(max_length=100, blank=True, null=True)
     city_province = models.CharField(max_length=200, blank=True, null=True)
+    lot_size = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        blank=True, 
+        null=True,
+        help_text="Lot size in square meters"
+    )
 
     # ----------------------------
     # 5. Timeline
@@ -326,6 +617,49 @@ class ProjectProfile(models.Model):
             self.status = "PL"
 
         self.save(update_fields=["progress", "status"])
+    
+    # BOQ tracking fields for cost learning
+    extracted_total_cost = models.DecimalField(
+        max_digits=15, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="Total cost extracted from BOQ documents"
+    )
+    extracted_cost_breakdown = models.JSONField(
+        null=True, 
+        blank=True,
+        help_text="Cost breakdown extracted from BOQ (materials, labor, etc.)"
+    )
+    boq_file_processed = models.BooleanField(
+        default=False,
+        help_text="Whether BOQ file has been processed for cost extraction"
+    )
+    cost_data_contributed = models.BooleanField(
+        default=False,
+        help_text="Whether this project's cost data has been contributed to ProjectType learning"
+    )
+    
+    # BOQ detailed data storage
+    boq_items = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Detailed BOQ items with dependencies and breakdowns"
+    )
+    boq_dependencies = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Dependency mapping for BOQ items"
+    )
+    project_role = models.CharField(
+        max_length=20,
+        choices=[
+            ('general_contractor', 'General Contractor'),
+            ('subcontractor', 'Subcontractor')
+        ],
+        default='general_contractor',
+        help_text="Role of the company in this project"
+    )
         
 #Temporary for projects that needs to be approved
 class ProjectStaging(models.Model):

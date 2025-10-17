@@ -23,7 +23,7 @@
             <span>New (30d): {{ analytics.new_users_30_days }}</span>
           </div>
           {% endif %}
-          <a href="{% url 'add_user' token=token %}"
+          <a href="{% if token %}{% url 'add_user' token=token %}{% else %}{% url 'add_user_session' %}{% endif %}"
             class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
@@ -175,7 +175,7 @@
         Showing {{ profiles.start_index }} to {{ profiles.end_index }} of {{ profiles.paginator.count }} results
         {% if search_query or role_filter or show_archived %}
         <span class="ml-2">
-          <a href="{% url 'manage_user_profiles' token=token %}" 
+          <a href="{% if token %}{% url 'manage_user_profiles' token=token %}{% else %}{% url 'manage_user_profiles_session' %}{% endif %}" 
              class="text-blue-600 hover:text-blue-800 text-xs font-medium">
             Clear filters
           </a>
@@ -270,7 +270,7 @@
                     <!-- Edit Mode -->
                     {% if not profile.is_archived %}
                     <div id="name-edit-{{ profile.id }}" class="hidden">
-                      <form method="post" action="{% url 'manage_user_profiles' token=token %}" class="space-y-3">
+                      <form method="post" action="{% if token %}{% url 'manage_user_profiles' token=token %}{% else %}{% url 'manage_user_profiles_session' %}{% endif %}" class="space-y-3">
                         {% csrf_token %}
                         <input type="hidden" name="profile_id" value="{{ profile.id }}">
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -312,7 +312,7 @@
               <!-- Role Column -->
               <td class="px-6 py-4">
                 {% if not profile.is_archived %}
-                <form method="post" action="{% url 'manage_user_profiles' token=token %}" class="role-form">
+                <form method="post" action="{% if token %}{% url 'manage_user_profiles' token=token %}{% else %}{% url 'manage_user_profiles_session' %}{% endif %}" class="role-form">
                   {% csrf_token %}
                   <input type="hidden" name="profile_id" value="{{ profile.id }}">
                   <select name="role" 
@@ -362,7 +362,7 @@
               <td class="px-6 py-4 text-center">
                 <div class="flex items-center justify-center space-x-2">
                   {% if not profile.is_archived %}
-                  <a href="{% url 'edit_user' token=token user_id=profile.user.id %}"
+                  <a href="{% if token %}{% url 'edit_user' token=token user_id=profile.user.id %}{% else %}{% url 'edit_user_session' user_id=profile.user.id %}{% endif %}"
                      class="text-blue-600 hover:text-blue-900 transition-colors"
                      title="Edit user details">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -370,7 +370,7 @@
                     </svg>
                   </a>
                   <button data-email="{{ profile.user.email }}" 
-                          data-url="{% url 'archive_user' token=token user_id=profile.user.id %}"
+                          data-url="{% if token %}{% url 'archive_user' token=token user_id=profile.user.id %}{% else %}{% url 'archive_user_session' user_id=profile.user.id %}{% endif %}"
                           onclick="confirmArchive(this.dataset.email, this.dataset.url)"
                           class="text-red-600 hover:text-red-900 transition-colors"
                           title="Archive user">
@@ -380,7 +380,7 @@
                   </button>
                   {% else %}
                   <button data-email="{{ profile.user.email }}" 
-                          data-url="{% url 'unarchive_user' token=token user_id=profile.user.id %}"
+                          data-url="{% if token %}{% url 'unarchive_user' token=token user_id=profile.user.id %}{% else %}{% url 'unarchive_user_session' user_id=profile.user.id %}{% endif %}"
                           onclick="confirmUnarchive(this.dataset.email, this.dataset.url)"
                           class="text-green-600 hover:text-green-900 transition-colors"
                           title="Restore user">
@@ -410,7 +410,7 @@
                 {% if not search_query and not role_filter %}
                   {% if request.user.is_superuser or request.user.userprofile.role == "EG" or request.user.userprofile.role == "OM" %}
                   <div class="mt-6">
-                    <a href="{% url 'add_user' token=token %}"
+                    <a href="{% if token %}{% url 'add_user' token=token %}{% else %}{% url 'add_user_session' %}{% endif %}"
                        class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors">
                       <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>

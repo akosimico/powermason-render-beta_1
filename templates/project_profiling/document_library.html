@@ -1057,8 +1057,23 @@ async function loadProjects() {
         const projectSelect = document.getElementById('projectFilter');
         const docProjectSelect = document.getElementById('docProject');
 
-        data.projects.forEach(project => {
-            const option = new Option(project.project_name, project.id);
+        // Sort projects to show pending approval projects first
+        const sortedProjects = data.projects.sort((a, b) => {
+            // Pending projects first
+            if (a.status === 'pending' && b.status !== 'pending') return -1;
+            if (a.status !== 'pending' && b.status === 'pending') return 1;
+            
+            // Within the same status, sort by project name
+            return a.project_name.localeCompare(b.project_name);
+        });
+
+        sortedProjects.forEach(project => {
+            // Create display text with project name and ID/code
+            const displayText = project.project_id && project.project_id !== 'N/A' 
+                ? `${project.project_name} (${project.project_id})`
+                : project.project_name;
+            
+            const option = new Option(displayText, project.id);
             projectSelect.add(option.cloneNode(true));
             docProjectSelect.add(option);
         });

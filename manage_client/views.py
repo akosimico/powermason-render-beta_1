@@ -596,12 +596,25 @@ def project_types_management(request):
 @login_required
 @role_required('OM', 'EG', 'superuser')
 def add_project_type(request):
-    """Add new project type"""
+    """Add new project type with cost configuration"""
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         description = request.POST.get('description', '').strip()
         code = request.POST.get('code', '').strip().upper()
         is_active = request.POST.get('is_active') == 'on'
+        
+        # Cost configuration fields
+        base_cost_low_end = request.POST.get('base_cost_low_end')
+        base_cost_mid_range = request.POST.get('base_cost_mid_range')
+        base_cost_high_end = request.POST.get('base_cost_high_end')
+        
+        # Cost breakdown percentages
+        materials_percentage = request.POST.get('materials_percentage', '40.00')
+        labor_percentage = request.POST.get('labor_percentage', '30.00')
+        equipment_percentage = request.POST.get('equipment_percentage', '10.00')
+        permits_percentage = request.POST.get('permits_percentage', '5.00')
+        contingency_percentage = request.POST.get('contingency_percentage', '10.00')
+        overhead_percentage = request.POST.get('overhead_percentage', '5.00')
         
         # Validation
         if not name:
@@ -609,17 +622,45 @@ def add_project_type(request):
             return redirect('project_types_management')
         
         if not code:
-            messages.error(request, 'Project type code is required.')
+            # Auto-generate code from name
+            code = ''.join([word[0].upper() for word in name.split() if word])[:10]
+        
+        # Validate percentages add up to 100%
+        try:
+            total_percentage = (
+                float(materials_percentage or 0) + 
+                float(labor_percentage or 0) + 
+                float(equipment_percentage or 0) + 
+                float(permits_percentage or 0) + 
+                float(contingency_percentage or 0) + 
+                float(overhead_percentage or 0)
+            )
+            if abs(total_percentage - 100) > 0.01:
+                messages.error(request, f'Cost breakdown percentages must add up to 100%. Current total: {total_percentage:.2f}%')
+                return redirect('project_types_management')
+        except (ValueError, TypeError):
+            messages.error(request, 'Invalid percentage values.')
             return redirect('project_types_management')
         
         try:
             user_profile = request.user.userprofile
-            ProjectType.objects.create(
+            project_type = ProjectType.objects.create(
                 name=name,
                 description=description,
                 code=code,
                 is_active=is_active,
-                created_by=user_profile
+                created_by=user_profile,
+                # Cost configuration
+                base_cost_low_end=base_cost_low_end if base_cost_low_end else None,
+                base_cost_mid_range=base_cost_mid_range if base_cost_mid_range else None,
+                base_cost_high_end=base_cost_high_end if base_cost_high_end else None,
+                # Cost breakdown
+                materials_percentage=materials_percentage,
+                labor_percentage=labor_percentage,
+                equipment_percentage=equipment_percentage,
+                permits_percentage=permits_percentage,
+                contingency_percentage=contingency_percentage,
+                overhead_percentage=overhead_percentage,
             )
             messages.success(request, f'Project type "{name}" created successfully.')
         except IntegrityError:
@@ -633,7 +674,7 @@ def add_project_type(request):
 @login_required
 @role_required('OM','EG', 'superuser')
 def edit_project_type(request, type_id):
-    """Edit existing project type"""
+    """Edit existing project type with cost configuration"""
     project_type = get_object_or_404(ProjectType, id=type_id)
     
     if request.method == 'POST':
@@ -642,14 +683,27 @@ def edit_project_type(request, type_id):
         code = request.POST.get('code', '').strip().upper()
         is_active = request.POST.get('is_active') == 'on'
         
+        # Cost configuration fields
+        base_cost_low_end = request.POST.get('base_cost_low_end')
+        base_cost_mid_range = request.POST.get('base_cost_mid_range')
+        base_cost_high_end = request.POST.get('base_cost_high_end')
+        
+        # Cost breakdown percentages
+        materials_percentage = request.POST.get('materials_percentage', '40.00')
+        labor_percentage = request.POST.get('labor_percentage', '30.00')
+        equipment_percentage = request.POST.get('equipment_percentage', '10.00')
+        permits_percentage = request.POST.get('permits_percentage', '5.00')
+        contingency_percentage = request.POST.get('contingency_percentage', '10.00')
+        overhead_percentage = request.POST.get('overhead_percentage', '5.00')
+        
         # Validation
         if not name:
             messages.error(request, 'Project type name is required.')
             return redirect('project_types_management')
         
         if not code:
-            messages.error(request, 'Project type code is required.')
-            return redirect('project_types_management')
+            # Auto-generate code from name
+            code = ''.join([word[0].upper() for word in name.split() if word])[:10]
         
         # Check for duplicates (excluding current record)
         if ProjectType.objects.filter(name=name).exclude(id=type_id).exists():
@@ -660,11 +714,39 @@ def edit_project_type(request, type_id):
             messages.error(request, 'A project type with this code already exists.')
             return redirect('project_types_management')
         
+        # Validate percentages add up to 100%
+        try:
+            total_percentage = (
+                float(materials_percentage or 0) + 
+                float(labor_percentage or 0) + 
+                float(equipment_percentage or 0) + 
+                float(permits_percentage or 0) + 
+                float(contingency_percentage or 0) + 
+                float(overhead_percentage or 0)
+            )
+            if abs(total_percentage - 100) > 0.01:
+                messages.error(request, f'Cost breakdown percentages must add up to 100%. Current total: {total_percentage:.2f}%')
+                return redirect('project_types_management')
+        except (ValueError, TypeError):
+            messages.error(request, 'Invalid percentage values.')
+            return redirect('project_types_management')
+        
         try:
             project_type.name = name
             project_type.description = description
             project_type.code = code
             project_type.is_active = is_active
+            # Cost configuration
+            project_type.base_cost_low_end = base_cost_low_end if base_cost_low_end else None
+            project_type.base_cost_mid_range = base_cost_mid_range if base_cost_mid_range else None
+            project_type.base_cost_high_end = base_cost_high_end if base_cost_high_end else None
+            # Cost breakdown
+            project_type.materials_percentage = materials_percentage
+            project_type.labor_percentage = labor_percentage
+            project_type.equipment_percentage = equipment_percentage
+            project_type.permits_percentage = permits_percentage
+            project_type.contingency_percentage = contingency_percentage
+            project_type.overhead_percentage = overhead_percentage
             project_type.save()
             
             messages.success(request, f'Project type "{name}" updated successfully.')
@@ -673,6 +755,7 @@ def edit_project_type(request, type_id):
         
         return redirect('project_types_management')
     
+    # GET request - redirect back to management (modal system handles data fetching)
     return redirect('project_types_management')
 
 
@@ -743,6 +826,15 @@ def get_project_type(request, type_id):
             'description': project_type.description,
             'code': project_type.code,
             'is_active': project_type.is_active,
+            'base_cost_low_end': float(project_type.base_cost_low_end) if project_type.base_cost_low_end else None,
+            'base_cost_mid_range': float(project_type.base_cost_mid_range) if project_type.base_cost_mid_range else None,
+            'base_cost_high_end': float(project_type.base_cost_high_end) if project_type.base_cost_high_end else None,
+            'materials_percentage': float(project_type.materials_percentage),
+            'labor_percentage': float(project_type.labor_percentage),
+            'equipment_percentage': float(project_type.equipment_percentage),
+            'permits_percentage': float(project_type.permits_percentage),
+            'contingency_percentage': float(project_type.contingency_percentage),
+            'overhead_percentage': float(project_type.overhead_percentage),
         }
         return JsonResponse(data)
     except ProjectType.DoesNotExist:

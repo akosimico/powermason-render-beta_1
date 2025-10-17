@@ -22,6 +22,7 @@ class ProjectProfileForm(forms.ModelForm):
             "location",
             "gps_coordinates",
             "city_province",
+            "lot_size",
             "start_date",
             "target_completion_date",
             "actual_completion_date",
@@ -29,6 +30,8 @@ class ProjectProfileForm(forms.ModelForm):
             "expense",
             "payment_terms",
             "site_engineer",
+            "contract_agreement",
+            "permits_licenses",
             # subcontractors removed - managed via project view
             # Team & Resources
             "project_in_charge",
@@ -39,12 +42,26 @@ class ProjectProfileForm(forms.ModelForm):
             "number_of_laborers",
             # Note: contract_agreement and permits_licenses removed - use Document Library instead
             "status",
+            # BOQ fields
+            "boq_items",
+            "boq_dependencies",
+            "extracted_total_cost",
+            "extracted_cost_breakdown",
+            "boq_file_processed",
+            "project_role",
         ]
         widgets = {
             "start_date": forms.DateInput(attrs={"type": "date"}),
             "target_completion_date": forms.DateInput(attrs={"type": "date"}),
             "actual_completion_date": forms.DateInput(attrs={"type": "date"}),
             "location": forms.Textarea(attrs={"rows": 3, "resize": "vertical"}),
+            # BOQ fields - hidden, handled by JavaScript
+            "boq_items": forms.HiddenInput(),
+            "boq_dependencies": forms.HiddenInput(),
+            "extracted_total_cost": forms.HiddenInput(),
+            "extracted_cost_breakdown": forms.HiddenInput(),
+            "boq_file_processed": forms.HiddenInput(),
+            "project_role": forms.HiddenInput(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -57,6 +74,26 @@ class ProjectProfileForm(forms.ModelForm):
         # Handle Project Manager field
         # ----------------------------
         self.fields["project_manager"].required = False
+        
+        # ----------------------------
+        # Handle BOQ fields - make them non-required
+        # ----------------------------
+        boq_fields = ["boq_items", "boq_dependencies", "extracted_total_cost", 
+                      "extracted_cost_breakdown", "boq_file_processed", "project_role"]
+        for field_name in boq_fields:
+            if field_name in self.fields:
+                self.fields[field_name].required = False
+                
+        # Store BOQ data for later processing in clean method
+        self._boq_items_data = None
+        if 'boq_items' in self.data and self.data['boq_items']:
+            try:
+                import json
+                self._boq_items_data = json.loads(self.data['boq_items'])
+                print(f"DEBUG: Form - Parsed BOQ data: {len(self._boq_items_data)} items")
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"DEBUG: Form - Error parsing BOQ data: {e}")
+                pass
         pm_qs = UserProfile.objects.filter(role="PM")
 
         if self.instance and self.instance.project_manager:
@@ -193,6 +230,31 @@ class ProjectProfileForm(forms.ModelForm):
                 "min": "0",
                 "placeholder": "Enter number of laborers"
             })
+
+    def clean(self):
+        cleaned_data = super().clean()
+        
+        # Handle BOQ items data if it was parsed from JSON
+        if hasattr(self, '_boq_items_data') and self._boq_items_data:
+            print(f"DEBUG: Form clean - Processing BOQ data: {len(self._boq_items_data)} items")
+            cleaned_data['boq_items'] = self._boq_items_data
+            
+            # Calculate cost breakdown from BOQ items
+            if self._boq_items_data:
+                total_cost = sum(float(item.get('total_cost', 0)) for item in self._boq_items_data)
+                cleaned_data['extracted_total_cost'] = total_cost
+                
+                cost_breakdown = {
+                    'materials': sum(float(item.get('material_cost', 0)) for item in self._boq_items_data),
+                    'labor': sum(float(item.get('labor_cost', 0)) for item in self._boq_items_data),
+                    'equipment': sum(float(item.get('equipment_cost', 0)) for item in self._boq_items_data),
+                    'subcontractor': sum(float(item.get('subcontractor_cost', 0)) for item in self._boq_items_data),
+                }
+                cleaned_data['extracted_cost_breakdown'] = cost_breakdown
+                cleaned_data['boq_file_processed'] = True
+                print(f"DEBUG: Form clean - Calculated total cost: {total_cost}")
+        
+        return cleaned_data
 
 class ProjectBudgetForm(forms.ModelForm):
     class Meta:

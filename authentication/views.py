@@ -258,13 +258,22 @@ def redirect_to_dashboard(request):
     request.session['dashboard_token'] = token
     request.session.save()
 
-    return redirect('dashboard_signed_with_role', token=token, role=role)
+    # Try to redirect to token-based URL first, fallback to session-based
+    try:
+        return redirect('dashboard_signed_with_role', token=token, role=role)
+    except:
+        return redirect('dashboard_session')
 
 
 @login_required
 @verified_email_required
 def dashboard_signed_with_role(request, token=None, role=None):
-    verified_profile = verify_user_token(request, token)
+    # If no token provided, try to get from session or generate one
+    if token is None:
+        verified_profile = verify_user_token(request, token)
+    else:
+        verified_profile = verify_user_token(request, token)
+    
     if not verified_profile:
         return redirect("unauthorized")
 
@@ -554,9 +563,19 @@ def superuser_required(view_func):
 @login_required
 @role_required('EG', 'OM')
 def manage_user_profiles(request, token=None):
-    verified_profile = verify_user_token(request, token)
-    if not verified_profile:
-        return redirect("unauthorized")
+    # For session-based access (token=None), use the user's profile directly
+    # since @role_required already verified the user has the right role
+    if token is None:
+        try:
+            verified_profile = UserProfile.objects.get(user=request.user)
+        except UserProfile.DoesNotExist:
+            messages.error(request, "User profile not found. Please contact support.")
+            return redirect("unauthorized")
+    else:
+        # For token-based access, verify the token
+        verified_profile = verify_user_token(request, token)
+        if not verified_profile:
+            return redirect("unauthorized")
     
     if verified_profile.role == "EG":
         available_role_choices = UserProfile.ROLE_CHOICES
@@ -732,12 +751,19 @@ def get_user_analytics(verified_profile):
 @login_required
 @role_required("EG", "OM")
 def add_user(request, token=None):
-
-    verified_profile = verify_user_token(request, token)
-
-    if not verified_profile:
-        print("Unauthorized: No verified profile")
-        return redirect("unauthorized")
+    # For session-based access (token=None), use the user's profile directly
+    # since @role_required already verified the user has the right role
+    if token is None:
+        try:
+            verified_profile = UserProfile.objects.get(user=request.user)
+        except UserProfile.DoesNotExist:
+            messages.error(request, "User profile not found. Please contact support.")
+            return redirect("unauthorized")
+    else:
+        # For token-based access, verify the token
+        verified_profile = verify_user_token(request, token)
+        if not verified_profile:
+            return redirect("unauthorized")
    
     if not request.user.is_superuser and verified_profile.role not in ["OM", "EG" ]:
         print("Unauthorized: Not superuser or EG")
@@ -801,8 +827,22 @@ def add_user(request, token=None):
 @login_required
 @role_required("EG", "OM")
 def edit_user(request, token=None, user_id=None):
-    verified_profile = verify_user_token(request, token)
-    if not verified_profile or (not request.user.is_superuser and verified_profile.role not in ["OM", "EG" ]):
+    # For session-based access (token=None), use the user's profile directly
+    if token is None:
+        try:
+            verified_profile = UserProfile.objects.get(user=request.user)
+        except UserProfile.DoesNotExist:
+            messages.error(request, "User profile not found. Please contact support.")
+            return redirect("unauthorized")
+    else:
+        # For token-based access, verify the token
+        verified_profile = verify_user_token(request, token)
+        if not verified_profile:
+            return redirect("unauthorized")
+    
+    # Check role permissions
+    if not request.user.is_superuser and verified_profile.role not in ["OM", "EG"]:
+        messages.error(request, "Access denied. You are not authorized to edit users.")
         return redirect("unauthorized")
 
     user = get_object_or_404(User, id=user_id)
@@ -826,8 +866,22 @@ def edit_user(request, token=None, user_id=None):
 @login_required
 @role_required('EG', 'OM')
 def archive_user(request, token=None, user_id=None):
-    verified_profile = verify_user_token(request, token)
-    if not verified_profile or (not request.user.is_superuser and verified_profile.role != "EG"):
+    # For session-based access (token=None), use the user's profile directly
+    if token is None:
+        try:
+            verified_profile = UserProfile.objects.get(user=request.user)
+        except UserProfile.DoesNotExist:
+            messages.error(request, "User profile not found. Please contact support.")
+            return redirect("unauthorized")
+    else:
+        # For token-based access, verify the token
+        verified_profile = verify_user_token(request, token)
+        if not verified_profile:
+            return redirect("unauthorized")
+    
+    # Check role permissions (only EG can archive users)
+    if not request.user.is_superuser and verified_profile.role != "EG":
+        messages.error(request, "Access denied. Only Engineering Group can archive users.")
         return redirect("unauthorized")
 
     profile = get_object_or_404(UserProfile, user_id=user_id)
@@ -846,8 +900,22 @@ def archive_user(request, token=None, user_id=None):
 @login_required
 @role_required('EG', 'OM')
 def unarchive_user(request, token=None, user_id=None):
-    verified_profile = verify_user_token(request, token)
-    if not verified_profile or (not request.user.is_superuser and verified_profile.role != "EG"):
+    # For session-based access (token=None), use the user's profile directly
+    if token is None:
+        try:
+            verified_profile = UserProfile.objects.get(user=request.user)
+        except UserProfile.DoesNotExist:
+            messages.error(request, "User profile not found. Please contact support.")
+            return redirect("unauthorized")
+    else:
+        # For token-based access, verify the token
+        verified_profile = verify_user_token(request, token)
+        if not verified_profile:
+            return redirect("unauthorized")
+    
+    # Check role permissions (only EG can unarchive users)
+    if not request.user.is_superuser and verified_profile.role != "EG":
+        messages.error(request, "Access denied. Only Engineering Group can unarchive users.")
         return redirect("unauthorized")
 
     profile = get_object_or_404(UserProfile, user_id=user_id)

@@ -15,7 +15,7 @@ def create_superuser(sender, **kwargs):
     Runs after migrations.
     """
     if not CustomUser.objects.filter(is_superuser=True).exists():
-        email = "admin@example.com"
+        email = "jhaynoelbarnedo@gmail.com"
         password = "admin123"
 
         user = CustomUser.objects.create_superuser(

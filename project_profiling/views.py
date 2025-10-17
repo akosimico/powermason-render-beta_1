@@ -708,6 +708,37 @@ def review_pending_project(request, token, project_id, role):
                     messages.error(request, "Please enter a valid budget amount.")
                     return render(request, "project_profiling/review_pending_project.html", context)
 
+                # --- Budget validation ---
+                estimated_cost = project.project_data.get("budget", 0) or project.project_data.get("estimated_cost", 0)
+                if estimated_cost and estimated_cost > 0:
+                    estimated_cost = float(estimated_cost)
+                    
+                    # Calculate minimum allowed budget (40% of estimated cost)
+                    min_budget = estimated_cost * 0.4
+                    
+                    # Calculate maximum allowed budget (150% of estimated cost)
+                    max_budget = estimated_cost * 1.5
+                    
+                    print(f"DEBUG: Budget validation - Estimated: {estimated_cost}, Min: {min_budget}, Max: {max_budget}, Approved: {approved_budget}")
+                    
+                    if approved_budget < min_budget:
+                        messages.error(
+                            request, 
+                            f"❌ Approved budget (₱{approved_budget:,.2f}) is too low. "
+                            f"Minimum allowed is ₱{min_budget:,.2f} (40% of estimated cost ₱{estimated_cost:,.2f}). "
+                            f"Please increase the budget amount."
+                        )
+                        return render(request, "project_profiling/review_pending_project.html", context)
+                    
+                    if approved_budget > max_budget:
+                        messages.warning(
+                            request, 
+                            f"⚠️ Approved budget (₱{approved_budget:,.2f}) is significantly higher than estimated cost. "
+                            f"Maximum recommended is ₱{max_budget:,.2f} (150% of estimated cost ₱{estimated_cost:,.2f}). "
+                            f"Please confirm this is correct before proceeding."
+                        )
+                        # Don't return here - allow override with warning
+
                 # --- Get employee assignments, client, and project type ---
                 from employees.models import Employee
                 from authentication.models import UserProfile
@@ -831,6 +862,8 @@ def review_pending_project(request, token, project_id, role):
                     description=project.project_data.get("description"),
                     subcontractors=project.project_data.get("subcontractors"),
                     payment_terms=project.project_data.get("payment_terms"),
+                    # BOQ related fields
+                    lot_size=project.project_data.get("lot_size", 0),
                 )
                 print(f"DEBUG: Created new ProjectProfile ID={new_profile.id}")
 
@@ -844,6 +877,35 @@ def review_pending_project(request, token, project_id, role):
                     migrated_count += 1
                 print(f"DEBUG: Migrated {migrated_count} document(s) from staging to approved project")
 
+                # --- Handle BOQ data and create budget entries ---
+                boq_items = project.project_data.get('boq_items', [])
+                boq_items_processed = False
+                if boq_items:
+                    try:
+                        # Save BOQ data to the approved project
+                        new_profile.boq_items = boq_items
+                        new_profile.boq_file_processed = True
+                        new_profile.extracted_total_cost = sum(float(item.get('total_cost', 0)) for item in boq_items)
+                        
+                        # Create cost breakdown
+                        cost_breakdown = {
+                            'materials': sum(float(item.get('material_cost', 0)) for item in boq_items),
+                            'labor': sum(float(item.get('labor_cost', 0)) for item in boq_items),
+                            'equipment': sum(float(item.get('equipment_cost', 0)) for item in boq_items),
+                            'subcontractor': sum(float(item.get('subcontractor_cost', 0)) for item in boq_items),
+                        }
+                        new_profile.extracted_cost_breakdown = cost_breakdown
+                        new_profile.save()
+                        
+                        # Create project scopes and budget entries from BOQ data
+                        create_project_scopes_and_budgets_from_boq(new_profile, boq_items)
+                        boq_items_processed = True
+                        print(f"DEBUG: Created scopes and budget entries from BOQ data for approved project")
+                        
+                    except Exception as e:
+                        print(f"DEBUG: Error handling BOQ data for approved project: {e}")
+                        messages.warning(request, f"⚠️ Project approved successfully, but there was an issue processing BOQ data: {str(e)}")
+
                 # --- Handle contract file ---
                 contract_path = project.project_data.get("contract_agreement")
                 print(f"DEBUG: contract_path = {contract_path}")
@@ -851,6 +913,15 @@ def review_pending_project(request, token, project_id, role):
                     with default_storage.open(contract_path, "rb") as f:
                         new_profile.contract_agreement.save(os.path.basename(contract_path), File(f), save=True)
                     print("DEBUG: Contract agreement file copied")
+
+                # --- Contribute to cost learning database ---
+                try:
+                    from .cost_learning import CostLearningEngine
+                    contributed = CostLearningEngine.approve_project_costs(new_profile)
+                    if contributed:
+                        print(f"DEBUG: Project cost data contributed to learning database")
+                except Exception as e:
+                    print(f"DEBUG: Error contributing to cost learning: {e}")
 
                 # --- Create notifications ---
                 from notifications.models import Notification, NotificationStatus
@@ -879,23 +950,32 @@ def review_pending_project(request, token, project_id, role):
                 project.delete()
                 print("DEBUG: Deleted staging project after approval")
 
-                # Prepare success message
-                success_msg = f"Budget approved for project '{new_profile.project_name}'. Project has been automatically approved with budget of ₱{approved_budget:,.2f}."
+                # Enhanced success message with more details
+                success_msg = f"🎉 Budget approved for project '{new_profile.project_name}'!"
+                success_msg += f" Project ID: {new_profile.project_id}"
+                success_msg += f" | Approved Budget: ₱{approved_budget:,.2f}"
+                success_msg += f" | Status: Approved & Active"
                 if migrated_count > 0:
-                    success_msg += f" {migrated_count} document(s) have been migrated to the approved project."
-
+                    success_msg += f" | 📁 {migrated_count} document(s) migrated"
+                if boq_items_processed:
+                    success_msg += f" | ✅ BOQ Data Processed"
+                
                 messages.success(request, success_msg)
                 return redirect("pending_projects_list")
 
             except Exception as e:
                 print(f"ERROR during approve flow -> {e}")
-                messages.error(request, "An error occurred while approving the project.")
+                import traceback
+                traceback.print_exc()
+                messages.error(request, f"❌ Critical error occurred while approving the project: {str(e)}. Please try again or contact support.")
 
         elif action == "reject":
             print("DEBUG: Reject action triggered")
+            project_name = project.project_data.get('project_name', 'Untitled')
+            project_id = project.project_data.get('project_id', 'N/A')
             project.delete()
             print("DEBUG: Deleted staging project after rejection")
-            messages.success(request, f"Project '{project.project_data.get('project_name', 'Untitled')}' has been rejected.")
+            messages.warning(request, f"⚠️ Project '{project_name}' (ID: {project_id}) has been rejected and removed from the system.")
             return redirect("pending_projects_list")
 
         else:
@@ -953,6 +1033,200 @@ def serialize_field(value):
     return value
 
 
+def create_project_budgets_from_boq(project_staging, boq_items):
+    """
+    Store BOQ items in project_data for later processing when project is approved.
+    Since ProjectScope requires a project FK and we're dealing with staging projects,
+    we'll store the BOQ data in project_data instead of creating separate budget entries.
+    """
+    
+    # Store BOQ items in project_data for later processing
+    if not hasattr(project_staging, 'project_data') or project_staging.project_data is None:
+        project_staging.project_data = {}
+    
+    # Add BOQ data to project_data
+    project_staging.project_data['boq_items'] = boq_items
+    project_staging.project_data['boq_processed'] = True
+    project_staging.project_data['boq_total_cost'] = sum(float(item.get('total_cost', 0)) for item in boq_items)
+    
+    # Calculate cost breakdown by category
+    cost_breakdown = {
+        'materials': sum(float(item.get('material_cost', 0)) for item in boq_items),
+        'labor': sum(float(item.get('labor_cost', 0)) for item in boq_items),
+        'equipment': sum(float(item.get('equipment_cost', 0)) for item in boq_items),
+        'subcontractor': sum(float(item.get('subcontractor_cost', 0)) for item in boq_items),
+    }
+    project_staging.project_data['boq_cost_breakdown'] = cost_breakdown
+    
+    # Save the updated project_data
+    project_staging.save()
+    
+    print(f"DEBUG: Stored {len(boq_items)} BOQ items in project_data with total cost: {project_staging.project_data['boq_total_cost']}")
+
+
+def create_project_scopes_and_budgets_from_boq(project_profile, boq_items):
+    """
+    Create actual ProjectScope and ProjectBudget entries from BOQ items for approved projects.
+    This function automatically scans all BOQ items, counts duplicates by section, 
+    and distributes percentages to make 100%.
+    """
+    from scheduling.models import ProjectScope
+    from .models import ProjectBudget
+    
+    print(f"DEBUG: Processing {len(boq_items)} BOQ items for project {project_profile.id}")
+    
+    # Step 1: Scan all BOQ items and group by section
+    section_analysis = {}
+    total_project_cost = 0
+    
+    for item in boq_items:
+        section_name = item.get('section', 'General Items').strip()
+        item_cost = float(item.get('total_cost', 0))
+        total_project_cost += item_cost
+        
+        print(f"DEBUG: Item '{item.get('description', '')}' -> Section: '{section_name}', Cost: {item_cost}")
+        
+        if section_name not in section_analysis:
+            section_analysis[section_name] = {
+                'items': [],
+                'total_cost': 0,
+                'item_count': 0
+            }
+        
+        section_analysis[section_name]['items'].append(item)
+        section_analysis[section_name]['total_cost'] += item_cost
+        section_analysis[section_name]['item_count'] += 1
+    
+    print(f"DEBUG: Section Analysis Complete:")
+    print(f"DEBUG: Total Project Cost: {total_project_cost}")
+    print(f"DEBUG: Found {len(section_analysis)} distinct sections:")
+    
+    # Step 2: Calculate weights and ensure they sum to 100%
+    section_weights = {}
+    weight_sum = 0
+    
+    for section_name, data in section_analysis.items():
+        # Calculate percentage based on cost
+        raw_weight = (data['total_cost'] / total_project_cost) * 100 if total_project_cost > 0 else 0
+        section_weights[section_name] = raw_weight
+        weight_sum += raw_weight
+        
+        print(f"DEBUG: '{section_name}': {data['item_count']} items, ₱{data['total_cost']:,.2f} ({raw_weight:.2f}%)")
+    
+    # Step 3: Normalize weights to ensure they sum to exactly 100%
+    if weight_sum > 0:
+        normalization_factor = 100 / weight_sum
+        section_names = list(section_weights.keys())
+        
+        # First pass: normalize and round to 2 decimal places
+        for section_name in section_names:
+            section_weights[section_name] = round(section_weights[section_name] * normalization_factor, 2)
+        
+        # Second pass: adjust for rounding errors to ensure exact 100% sum
+        current_sum = sum(section_weights.values())
+        difference = 100.0 - current_sum
+        
+        if abs(difference) > 0.01:  # Only adjust if difference is significant
+            # Add the difference to the largest weight to maintain exact 100%
+            largest_section = max(section_weights.keys(), key=lambda k: section_weights[k])
+            section_weights[largest_section] = round(section_weights[largest_section] + difference, 2)
+    
+    print(f"DEBUG: Normalized weights (should sum to 100%): {sum(section_weights.values()):.2f}%")
+    
+    # Step 4: Create scopes and budget entries
+    created_scopes = []
+    
+    for section_name, data in section_analysis.items():
+        try:
+            final_weight = section_weights.get(section_name, 0)
+            
+            print(f"DEBUG: Creating scope '{section_name}' with weight {final_weight}%")
+            
+            # Create ProjectScope
+            scope, created = ProjectScope.objects.get_or_create(
+                project=project_profile,
+                name=section_name,
+                defaults={
+                    'weight': final_weight
+                }
+            )
+            
+            if created:
+                created_scopes.append(section_name)
+                print(f"DEBUG: ✓ Created new scope '{section_name}' with ID {scope.id}")
+            else:
+                print(f"DEBUG: ⚠ Scope '{section_name}' already exists, updating weight to {final_weight}%")
+                scope.weight = final_weight
+                scope.save()
+            
+            # Create budget entries for each item in this section
+            # Group items by category to avoid duplicate scope-category combinations
+            category_totals = {}
+            
+            for item in data['items']:
+                try:
+                    item_cost = float(item.get('total_cost', 0))
+                    if item_cost > 0:
+                        # Determine category based on item data - fix string/int comparison
+                        category = 'MAT'  # Default to Materials
+                        material_cost = float(item.get('material_cost', 0))
+                        labor_cost = float(item.get('labor_cost', 0))
+                        equipment_cost = float(item.get('equipment_cost', 0))
+                        subcontractor_cost = float(item.get('subcontractor_cost', 0))
+                        
+                        if material_cost > 0:
+                            category = 'MAT'
+                        elif labor_cost > 0:
+                            category = 'LAB'
+                        elif equipment_cost > 0:
+                            category = 'EQU'
+                        elif subcontractor_cost > 0:
+                            category = 'SUB'
+                        
+                        # Accumulate costs by category for this scope
+                        if category not in category_totals:
+                            category_totals[category] = 0
+                        category_totals[category] += item_cost
+                        
+                        print(f"DEBUG: ✓ Processed BOQ item '{item.get('description', '')}' (₱{item_cost:,.2f}) -> Category: {category}")
+                        
+                except Exception as item_error:
+                    print(f"DEBUG: Error processing BOQ item '{item.get('description', '')}': {item_error}")
+                    continue
+            
+            # Create one budget entry per category per scope
+            for category, total_amount in category_totals.items():
+                try:
+                    budget_entry, created = ProjectBudget.objects.get_or_create(
+                        project=project_profile,
+                        scope=scope,
+                        category=category,
+                        defaults={
+                            'planned_amount': total_amount
+                        }
+                    )
+                    
+                    if created:
+                        print(f"DEBUG: ✓ Created budget entry for scope '{scope.name}' - {category}: ₱{total_amount:,.2f}")
+                    else:
+                        # Update existing entry
+                        budget_entry.planned_amount = total_amount
+                        budget_entry.save()
+                        print(f"DEBUG: ✓ Updated budget entry for scope '{scope.name}' - {category}: ₱{total_amount:,.2f}")
+                        
+                except Exception as budget_error:
+                    print(f"DEBUG: Error creating budget entry for scope '{scope.name}' - {category}: {budget_error}")
+                    continue
+            
+        except Exception as scope_error:
+            print(f"DEBUG: Error creating scope '{section_name}': {scope_error}")
+            continue
+    
+    print(f"DEBUG: SUCCESS! Created {len(created_scopes)} new scopes: {created_scopes}")
+    print(f"DEBUG: Total scopes in project: {ProjectScope.objects.filter(project=project_profile).count()}")
+    print(f"DEBUG: Total budget entries created: {ProjectBudget.objects.filter(project=project_profile).count()}")
+
+
 @login_required
 @verified_email_required
 @role_required('EG', 'OM')
@@ -981,18 +1255,28 @@ def project_create(request, token, role, project_type, client_id):
         next_id = f"{project_type}-001"
 
     if request.method == "POST":
+        print(f"DEBUG: POST data keys: {list(request.POST.keys())}")
+        print(f"DEBUG: POST files keys: {list(request.FILES.keys())}")
+        
+        # Debug BOQ data specifically
+        boq_items_data = request.POST.get('boq_items')
+        print(f"DEBUG: BOQ items data: {boq_items_data[:200] if boq_items_data else 'None'}...")
+        
         # Check if this is a draft save
         is_draft_save = request.POST.get('save_as_draft') == 'true'
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         
+        # Create form first
+        form = FormClass(request.POST, request.FILES, pre_selected_client_id=client_id)
+        
         # For draft saves, we want to be more lenient with validation
         if is_draft_save:
-            form = FormClass(request.POST, request.FILES, pre_selected_client_id=client_id)
             # Remove required validation for draft saves
             for field in form.fields.values():
                 field.required = False
         else:
-            form = FormClass(request.POST, request.FILES, pre_selected_client_id=client_id)
+            print(f"DEBUG: Creating regular form (not draft)")
+            print(f"DEBUG: Regular form created, checking validity...")
         
         # For AJAX draft saves, handle differently
         if is_ajax and is_draft_save:
@@ -1051,109 +1335,213 @@ def project_create(request, token, role, project_type, client_id):
                 
                 return JsonResponse({
                     'success': True, 
-                    'message': 'Draft saved successfully',
-                    'project_id': project.id
+                    'message': f'💾 Draft "{cleaned_data.get("project_name", "Project")}" saved successfully!',
+                    'project_id': project.id,
+                    'details': {
+                        'project_name': cleaned_data.get('project_name'),
+                        'project_id': next_id,
+                        'saved_at': timezone.now().isoformat()
+                    }
                 })
                 
             except Exception as e:
+                print(f"DEBUG: Error saving draft: {e}")
                 return JsonResponse({
                     'success': False, 
-                    'error': str(e)
+                    'error': f'❌ Failed to save draft: {str(e)}',
+                    'details': {
+                        'error_type': type(e).__name__,
+                        'timestamp': timezone.now().isoformat()
+                    }
                 })
-        
-        # Regular form submission (not draft)
-        if form.is_valid():
-            cleaned_data = {}
-            for k, v in form.cleaned_data.items():
-                if hasattr(v, "read") and hasattr(v, "name"):
-                    file_path = default_storage.save(f"{k}/{v.name}", v)
-                    cleaned_data[k] = file_path
-                else:
-                    cleaned_data[k] = serialize_field(v)
-
-            project_manager_instance = form.cleaned_data.get("project_manager")
-            client_instance = client
-            
-            # Handle project type
-            project_type_name = cleaned_data.get("project_type")
-            project_type_instance = None
-            if project_type_name:
-                project_type_instance, _ = ProjectType.objects.get_or_create(
-                    name=str(project_type_name),
-                    defaults={
-                        "code": str(project_type_name)[:3].upper(),
-                        "created_by": verified_profile,
-                    },
-                )
-
-            # Check if there's an existing draft to convert
-            draft_session = request.session.get('draft_session')
-            existing_draft = None
-
-            if draft_session:
-                try:
-                    existing_draft = ProjectStaging.objects.get(
-                        created_by=verified_profile,
-                        project_source=project_type,
-                        is_draft=True,
-                        project_data__client_id=client_instance.id,
-                        project_data__draft_session=draft_session,
-                    )
-                except ProjectStaging.DoesNotExist:
-                    pass
-
-            if existing_draft:
-                # Convert existing draft to final submission
-                existing_draft.is_draft = False
-                existing_draft.submitted_for_approval = True
-                existing_draft.project_data = {
-                    **{k: serialize_field(v) for k, v in cleaned_data.items()},
-                    "project_manager_id": project_manager_instance.id if project_manager_instance else None,
-                    "client_id": client_instance.id if client_instance else None,
-                    "project_id": next_id,
-                }
-                existing_draft.submitted_at = timezone.now()
-                existing_draft.save()
-                project = existing_draft
-
-                # Clear the draft session
-                if 'draft_session' in request.session:
-                    del request.session['draft_session']
-            else:
-                # Create final project (not draft)
-                project = ProjectStaging.objects.create(
-                    created_by=verified_profile,
-                    project_source=project_type,
-                    is_draft=False,  # This is a final submission
-                    submitted_for_approval=True,  # Ready for approval
-                    project_data={
-                        **{k: serialize_field(v) for k, v in cleaned_data.items()},
-                        "project_manager_id": project_manager_instance.id if project_manager_instance else None,
-                        "client_id": client_instance.id if client_instance else None,
-                        "project_id": next_id,
-                    },
-                    submitted_at=timezone.now(),
-                )
-
-            # Notify the creator
-            notif_self = Notification.objects.create(
-                message=f"You created the project '{cleaned_data.get('project_name', 'Unnamed')}'. It has been saved in pending projects awaiting approval.",
-                link=reverse(
-                    "project_list_direct_client" if project_type == "DC" else "project_list_general_contractor",
-                    kwargs={"token": token, "role": role}
-                )
-            )
-            NotificationStatus.objects.create(notification=notif_self, user=verified_profile)
-
-            messages.success(
-                request,
-                f"Project '{cleaned_data.get('project_name', 'Unnamed')}' created successfully and saved in pending projects awaiting approval."
-            )
-            redirect_url = "project_list_general_contractor" if project_type == "GC" else "project_list_direct_client"
-            return redirect(redirect_url, token=token, role=role)
-
         else:
-            messages.error(request, "There were errors in your form. Please check and try again.")
+            # Regular form submission (not draft)
+            print(f"DEBUG: About to check form validity...")
+            if form.is_valid():
+                print(f"DEBUG: Form is valid, processing data...")
+                try:
+                    cleaned_data = {}
+                    for k, v in form.cleaned_data.items():
+                        if hasattr(v, "read") and hasattr(v, "name"):
+                            file_path = default_storage.save(f"{k}/{v.name}", v)
+                            cleaned_data[k] = file_path
+                        else:
+                            cleaned_data[k] = serialize_field(v)
+                    
+                    # Handle BOQ data from hidden form field
+                    boq_items_data = request.POST.get('boq_items')
+                    if boq_items_data:
+                        try:
+                            import json
+                            boq_items = json.loads(boq_items_data)
+                            cleaned_data['boq_items'] = boq_items
+                            cleaned_data['boq_file_processed'] = True
+                            
+                            # Calculate total cost from BOQ items
+                            total_cost = sum(float(item.get('total_cost', 0)) for item in boq_items)
+                            cleaned_data['extracted_total_cost'] = total_cost
+                            
+                            # Create cost breakdown
+                            cost_breakdown = {
+                                'materials': sum(float(item.get('material_cost', 0)) for item in boq_items),
+                                'labor': sum(float(item.get('labor_cost', 0)) for item in boq_items),
+                                'equipment': sum(float(item.get('equipment_cost', 0)) for item in boq_items),
+                                'subcontractor': sum(float(item.get('subcontractor_cost', 0)) for item in boq_items),
+                            }
+                            cleaned_data['extracted_cost_breakdown'] = cost_breakdown
+                            
+                            # Update the project's estimated cost with BOQ total
+                            if 'estimated_cost' in cleaned_data:
+                                cleaned_data['estimated_cost'] = total_cost
+                            else:
+                                cleaned_data['estimated_cost'] = total_cost
+                            
+                            # Debug: Print BOQ data being saved
+                            print(f"DEBUG: Saving BOQ data - {len(boq_items)} items, Total cost: {total_cost}")
+                            
+                        except json.JSONDecodeError as e:
+                            print(f"DEBUG: JSON decode error in BOQ data: {e}")
+                            messages.error(request, f"❌ Invalid BOQ data format. Please re-upload your BOQ file.")
+                            return render(request, "project_profiling/project_form.html", {"form": form, "client": client, "token": token, "role": role, "project_type": project_type})
+                        except ValueError as e:
+                            print(f"DEBUG: Value error in BOQ data: {e}")
+                            messages.error(request, f"❌ Invalid BOQ data values. Please check your BOQ file format.")
+                            return render(request, "project_profiling/project_form.html", {"form": form, "client": client, "token": token, "role": role, "project_type": project_type})
+                        except Exception as e:
+                            print(f"DEBUG: Unexpected error processing BOQ data: {e}")
+                            messages.error(request, f"❌ Error processing BOQ data: {str(e)}. Please try again or contact support.")
+                            return render(request, "project_profiling/project_form.html", {"form": form, "client": client, "token": token, "role": role, "project_type": project_type})
+                    else:
+                        print("DEBUG: No BOQ data found in form submission")
+                    
+                    # Handle BOQ file uploads (simple file storage approach)
+                    boq_files = request.FILES.getlist('boq_files')
+                    if boq_files:
+                        boq_file_paths = []
+                        for boq_file in boq_files:
+                            # Save BOQ file
+                            file_path = default_storage.save(f"boq_files/{boq_file.name}", boq_file)
+                            boq_file_paths.append(file_path)
+                        cleaned_data['boq_file_paths'] = boq_file_paths
+                        print(f"DEBUG: Saved BOQ files: {boq_file_paths}")
+
+                    # Use the next project ID that was already generated at the beginning of the function
+
+                    # Get related instances
+                    project_manager_id = cleaned_data.get("project_manager")
+                    project_manager_instance = UserProfile.objects.filter(id=project_manager_id).first() if project_manager_id else None
+                    client_instance = Client.objects.filter(id=cleaned_data.get("client")).first() if cleaned_data.get("client") else None
+
+                    # Check if there's an existing draft to convert
+                    draft_session = request.session.get('draft_session')
+                    existing_draft = None
+
+                    if draft_session:
+                        try:
+                            existing_draft = ProjectStaging.objects.get(
+                                id=draft_session,
+                                created_by=verified_profile,
+                                is_draft=True
+                            )
+                            print(f"DEBUG: Found existing draft: {existing_draft.id}")
+                        except ProjectStaging.DoesNotExist:
+                            print("DEBUG: Draft session exists but draft not found, creating new one")
+                            existing_draft = None
+
+                    # Update existing draft or create new staging project
+                    if existing_draft:
+                        existing_draft.project_data = {
+                            **{k: serialize_field(v) for k, v in cleaned_data.items()},
+                            "project_manager_id": project_manager_instance.id if project_manager_instance else None,
+                            "client_id": client_instance.id if client_instance else None,
+                            "project_id": next_id,
+                        }
+                        existing_draft.submitted_at = timezone.now()
+                        existing_draft.save()
+                        project = existing_draft
+
+                        # Clear the draft session
+                        if 'draft_session' in request.session:
+                            del request.session['draft_session']
+                    else:
+                        # Create final project (not draft)
+                        project = ProjectStaging.objects.create(
+                            created_by=verified_profile,
+                            project_source=project_type,
+                            is_draft=False,  # This is a final submission
+                            submitted_for_approval=True,  # Ready for approval
+                            project_data={
+                                **{k: serialize_field(v) for k, v in cleaned_data.items()},
+                                "project_manager_id": project_manager_instance.id if project_manager_instance else None,
+                                "client_id": client_instance.id if client_instance else None,
+                                "project_id": next_id,
+                            },
+                            submitted_at=timezone.now(),
+                        )
+
+                    # Create project budget entries from BOQ data if available
+                    boq_processed = False
+                    if cleaned_data.get('boq_items'):
+                        try:
+                            create_project_budgets_from_boq(project, cleaned_data['boq_items'])
+                            boq_processed = True
+                            print(f"DEBUG: Created budget entries from BOQ data")
+                        except Exception as e:
+                            print(f"DEBUG: Error creating budget entries: {e}")
+                            messages.warning(request, f"⚠️ Project created successfully, but there was an issue processing BOQ budget data: {str(e)}")
+
+                    # Notify the creator
+                    notif_self = Notification.objects.create(
+                        message=f"You created the project '{cleaned_data.get('project_name', 'Unnamed')}'. It has been saved in pending projects awaiting approval.",
+                        link=reverse(
+                            "project_list_direct_client" if project_type == "DC" else "project_list_general_contractor",
+                            kwargs={"token": token, "role": role}
+                        )
+                    )
+                    NotificationStatus.objects.create(notification=notif_self, user=verified_profile)
+
+                    # Enhanced success message with more details
+                    project_name = cleaned_data.get('project_name', 'Unnamed')
+                    success_msg = f"🎉 Project '{project_name}' created successfully!"
+                    success_msg += f" Project ID: {next_id}"
+                    success_msg += f" | Status: Pending Approval"
+                    success_msg += f" | Budget: ₱{cleaned_data.get('estimated_cost', 0):,.2f}" if cleaned_data.get('estimated_cost') else ""
+                    success_msg += f" | Location: {cleaned_data.get('location', 'N/A')}"
+                    if boq_processed:
+                        success_msg += f" | ✅ BOQ Data Processed"
+                    
+                    messages.success(request, success_msg)
+                    redirect_url = "project_list_general_contractor" if project_type == "GC" else "project_list_direct_client"
+                    return redirect(redirect_url, token=token, role=role)
+                    
+                except Exception as e:
+                    print(f"DEBUG: Critical error during project creation: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    messages.error(request, f"❌ Critical error occurred while creating the project: {str(e)}. Please try again or contact support.")
+                    return render(request, "project_profiling/project_form.html", {"form": form, "client": client, "token": token, "role": role, "project_type": project_type})
+                
+            else:
+                print(f"DEBUG: Form validation failed!")
+                print(f"DEBUG: Form errors: {form.errors}")
+                print(f"DEBUG: Form non_field_errors: {form.non_field_errors()}")
+                for field, errors in form.errors.items():
+                    print(f"DEBUG: Field '{field}' errors: {errors}")
+                
+                # Add specific error messages for each field with better formatting
+                error_count = 0
+                for field, errors in form.errors.items():
+                    field_display = field.replace('_', ' ').title()
+                    for error in errors:
+                        error_count += 1
+                        messages.error(request, f"❌ {field_display}: {error}")
+                
+                # Add summary error message
+                if error_count > 0:
+                    messages.error(request, f"⚠️ Form validation failed with {error_count} error(s). Please correct the highlighted fields and try again.")
+                else:
+                    messages.error(request, "❌ There were errors in your form. Please check and try again.")
+                return render(request, "project_profiling/project_form.html", {"form": form, "client": client, "token": token, "role": role, "project_type": project_type})
 
     else:
         # Check if there's an existing draft for this user and project type
@@ -1340,6 +1728,18 @@ def approve_budget(request, project_id):
             try:
                 project.approved_budget = float(approved_budget)
                 project.save()
+
+                # Contribute to cost learning database if project has BOQ data
+                try:
+                    from .cost_learning import CostLearningEngine
+                    contributed = CostLearningEngine.approve_project_costs(project)
+                    if contributed:
+                        messages.info(
+                            request,
+                            'Project cost data has been added to the cost learning database.'
+                        )
+                except Exception as e:
+                    print(f"DEBUG: Error contributing to cost learning: {e}")
 
                 messages.success(
                     request,
@@ -2402,7 +2802,8 @@ def api_projects_list(request):
         # Add pending projects to the data list
         for pending in pending_projects:
             project_name = pending.project_data.get('project_name', 'Unnamed Project')
-            project_id = pending.project_data.get('project_id', 'N/A')
+            project_id = pending.project_data.get('project_id', pending.project_id_placeholder or 'N/A')
+            
             data.append({
                 'id': f"pending_{pending.id}",  # Prefix with 'pending_' to distinguish from approved projects
                 'project_id': project_id,

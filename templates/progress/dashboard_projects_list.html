@@ -355,31 +355,91 @@
         <!-- Empty State -->
         <div class="col-span-full">
             <div class="bg-white rounded-2xl shadow-sm border-2 border-dashed border-gray-300 p-12 text-center">
-                <svg class="w-16 h-16 text-gray-300 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                </svg>
+                <!-- Different icons based on context -->
+                {% if show_archived %}
+                    <svg class="w-16 h-16 text-gray-300 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                    </svg>
+                {% elif status_filter %}
+                    <svg class="w-16 h-16 text-gray-300 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                {% elif request.GET.search %}
+                    <svg class="w-16 h-16 text-gray-300 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                {% else %}
+                    <svg class="w-16 h-16 text-gray-300 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                    </svg>
+                {% endif %}
+                
                 <h3 class="text-lg font-semibold text-gray-900 mb-2">
                     {% if show_archived %}
-                        No archived projects
+                        No archived projects found
+                    {% elif status_filter %}
+                        No {{ status_filter|lower }} projects found
+                    {% elif request.GET.search %}
+                        No projects match your search
                     {% else %}
                         No projects available
                     {% endif %}
                 </h3>
-                <p class="text-gray-500 mb-6">
+                
+                <p class="text-gray-500 mb-6 max-w-md mx-auto">
                     {% if show_archived %}
-                        You don't have any archived projects yet.
+                        You don't have any archived projects yet. Archived projects are moved here when they're no longer active.
+                    {% elif status_filter %}
+                        There are currently no projects with the "{{ status_filter|lower }}" status. Try adjusting your filters or create a new project.
+                    {% elif request.GET.search %}
+                        No projects match "{{ request.GET.search }}". Try a different search term or clear the search to see all projects.
                     {% else %}
-                        Get started by creating your first project or check if you have the right permissions.
+                        {% if user_role == "PM" %}
+                            You don't have any projects assigned to you yet. Contact your administrator to get projects assigned.
+                        {% elif user_role == "VO" %}
+                            No projects are currently associated with your account. Contact your project manager for more information.
+                        {% else %}
+                            Get started by creating your first project or check if you have the right permissions.
+                        {% endif %}
                     {% endif %}
                 </p>
-                {% if not show_archived and user.is_authenticated and user.is_superuser or user|has_role:"EG,OM" %}
-                <button data-action="create" 
-                        class="project-action-btn inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                    Create Project
-                </button>
+                
+                <!-- Action buttons based on context -->
+                <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                    {% if request.GET.search or status_filter %}
+                        <a href="?show_archived={% if show_archived %}1{% else %}0{% endif %}" 
+                           class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            Clear Filters
+                        </a>
+                    {% endif %}
+                    
+                    {% if not show_archived and user.is_authenticated and user.is_superuser or user|has_role:"EG,OM" %}
+                        <button data-action="create" 
+                                class="project-action-btn inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            Create Project
+                        </button>
+                    {% endif %}
+                </div>
+                
+                <!-- Additional help text for different user roles -->
+                {% if not show_archived and not status_filter and not request.GET.search %}
+                    <div class="mt-8 pt-6 border-t border-gray-200">
+                        <p class="text-xs text-gray-400">
+                            {% if user_role == "PM" %}
+                                As a Project Manager, you'll see projects assigned to you here once they're created.
+                            {% elif user_role == "VO" %}
+                                As a View Only user, you can view projects that are associated with your account.
+                            {% else %}
+                                Need help? Contact your system administrator for assistance.
+                            {% endif %}
+                        </p>
+                    </div>
                 {% endif %}
             </div>
         </div>

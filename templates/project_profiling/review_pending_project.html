@@ -5,6 +5,35 @@
 
 {% block content %}
 <div class="min-h-screen bg-gray-50">
+    <!-- Messages -->
+    {% if messages %}
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+            {% for message in messages %}
+                <div class="mb-4 p-4 rounded-lg {% if message.tags == 'success' %}bg-green-100 border border-green-200 text-green-800{% elif message.tags == 'error' %}bg-red-100 border border-red-200 text-red-800{% elif message.tags == 'warning' %}bg-yellow-100 border border-yellow-200 text-yellow-800{% else %}bg-blue-100 border border-blue-200 text-blue-800{% endif %}">
+                    <div class="flex items-center">
+                        {% if message.tags == 'success' %}
+                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                            </svg>
+                        {% elif message.tags == 'error' %}
+                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                            </svg>
+                        {% elif message.tags == 'warning' %}
+                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                        {% else %}
+                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                            </svg>
+                        {% endif %}
+                        <span class="font-medium">{{ message }}</span>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
     <!-- Header Section -->
     <div class="bg-white border-b border-gray-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -201,6 +230,156 @@
                     </div>
                 </div>
 
+                <!-- BOQ (Bill of Quantities) Card -->
+                {% if project.project_data|get_item:"boq_items" or project.project_data|get_item:"boq_file_processed" %}
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <div>
+                            <h2 class="text-lg font-semibold text-gray-900 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
+                                </svg>
+                                Bill of Quantities (BOQ)
+                            </h2>
+                            <p class="text-xs text-gray-500 mt-1">
+                                {% if project.project_data|get_item:"boq_items" %}
+                                    {{ project.project_data|get_item:"boq_items"|length }} item{{ project.project_data|get_item:"boq_items"|length|pluralize }} • 
+                                    Total: ₱{{ project.project_data|get_item:"extracted_total_cost"|floatformat:2|intcomma|default:"0.00" }}
+                                {% else %}
+                                    BOQ file processed but no items extracted
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        {% if project.project_data|get_item:"boq_items" or project.project_data|get_item:"boq_file_processed" %}
+                            <!-- BOQ Summary -->
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                                <div class="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                                    <div class="text-xs font-medium text-purple-600 uppercase tracking-wide">Total Items</div>
+                                    <div class="text-2xl font-bold text-purple-900">{{ project.project_data|get_item:"boq_items"|length }}</div>
+                                </div>
+                                <div class="bg-green-50 rounded-lg p-4 border border-green-200">
+                                    <div class="text-xs font-medium text-green-600 uppercase tracking-wide">Total Cost</div>
+                                    <div class="text-2xl font-bold text-green-900">₱{{ project.project_data|get_item:"extracted_total_cost"|floatformat:2|intcomma|default:"0.00" }}</div>
+                                </div>
+                                <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                                    <div class="text-xs font-medium text-blue-600 uppercase tracking-wide">Lot Size</div>
+                                    <div class="text-2xl font-bold text-blue-900">{{ project.project_data|get_item:"lot_size"|floatformat:0|default:"0" }} m²</div>
+                                </div>
+                                <div class="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                                    <div class="text-xs font-medium text-orange-600 uppercase tracking-wide">Cost per m²</div>
+                                    <div class="text-2xl font-bold text-orange-900" id="costPerSqm">
+                                        ₱0.00
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Cost Breakdown -->
+                            {% if project.project_data|get_item:"extracted_cost_breakdown" %}
+                            <div class="mb-6">
+                                <h3 class="text-sm font-semibold text-gray-900 mb-3">Cost Breakdown</h3>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    {% with cost_breakdown=project.project_data|get_item:"extracted_cost_breakdown" %}
+                                        {% if cost_breakdown %}
+                                            {% for category, amount in cost_breakdown.items %}
+                                    <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                        <div class="text-xs font-medium text-gray-600 uppercase tracking-wide">{{ category|title }}</div>
+                                        <div class="text-lg font-semibold text-gray-900">₱{{ amount|floatformat:2|intcomma }}</div>
+                                    </div>
+                                            {% endfor %}
+                                        {% endif %}
+                                    {% endwith %}
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            <!-- BOQ Items with Pagination -->
+                            <div>
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="text-sm font-semibold text-gray-900">BOQ Items</h3>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-xs text-gray-500">Items per page:</span>
+                                        <select id="itemsPerPage" class="text-xs border border-gray-300 rounded px-2 py-1">
+                                            <option value="5">5</option>
+                                            <option value="10" selected>10</option>
+                                            <option value="20">20</option>
+                                            <option value="50">50</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="overflow-x-auto">
+                                    <table class="min-w-full text-sm">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Item</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Description</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Section</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">UOM</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Qty</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Unit Cost</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="boqItemsTableBody" class="bg-white divide-y divide-gray-200">
+                                            <!-- Initial items from Django template -->
+                                            {% for item in project.project_data|get_item:"boq_items" %}
+                                            <tr class="boq-item-row hover:bg-gray-50" style="display: none;">
+                                                <td class="px-3 py-2 text-sm font-medium text-gray-900">{{ item.item_number|default:"" }}</td>
+                                                <td class="px-3 py-2 text-sm text-gray-900">{{ item.description|default:"" }}</td>
+                                                <td class="px-3 py-2 text-sm text-gray-500">{{ item.section|default:"" }}</td>
+                                                <td class="px-3 py-2 text-sm text-gray-900 text-center">{{ item.uom|default:"" }}</td>
+                                                <td class="px-3 py-2 text-sm text-gray-900 text-right">{{ item.quantity|floatformat:2|intcomma|default:"0" }}</td>
+                                                <td class="px-3 py-2 text-sm text-gray-900 text-right">₱{{ item.unit_cost|floatformat:2|intcomma|default:"0.00" }}</td>
+                                                <td class="px-3 py-2 text-sm font-semibold text-gray-900 text-right">₱{{ item.total_cost|floatformat:2|intcomma|default:"0.00" }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <!-- Pagination Controls -->
+                                <div class="mt-4 flex items-center justify-between">
+                                    <div class="text-sm text-gray-700">
+                                        Showing <span id="showingStart">1</span> to <span id="showingEnd">10</span> of 
+                                        <span id="totalItems">{{ project.project_data|get_item:"boq_items"|length }}</span> items
+                                    </div>
+                                    
+                                    <div class="flex items-center space-x-2">
+                                        <button id="prevPage" class="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                                            Previous
+                                        </button>
+                                        
+                                        <div id="pageNumbers" class="flex space-x-1">
+                                            <!-- Page numbers will be populated by JavaScript -->
+                                        </div>
+                                        
+                                        <button id="nextPage" class="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-8">
+                                <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
+                                </svg>
+                                <p class="text-gray-500 text-sm mb-3">No BOQ data available</p>
+                                <p class="text-gray-400 text-xs">
+                                    {% if project.project_data|get_item:"boq_file_processed" %}
+                                        BOQ file was processed but no items were extracted
+                                    {% else %}
+                                        No BOQ files were uploaded for this project
+                                    {% endif %}
+                                </p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Description Card -->
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div class="px-6 py-4 border-b border-gray-200">
@@ -284,7 +463,7 @@
                     <div class="p-6 space-y-4">
                         <div class="flex justify-between items-center">
                             <span class="text-sm font-medium text-gray-500">Estimated Cost</span>
-                            <span class="text-sm font-semibold text-gray-900">₱{{ project.project_data|get_item:"budget"|default:0|floatformat:2|intcomma }}</span>
+                            <span class="text-sm font-semibold text-gray-900">₱{{ project.project_data|get_item:"estimated_cost"|default:0|floatformat:2|intcomma }}</span>
                         </div>
                         <div class="flex justify-between items-center border-t pt-4">
                             <span class="text-sm font-medium text-gray-500">Payment Terms</span>
@@ -322,12 +501,18 @@
                                            placeholder="0.00"
                                            required>
                                 </div>
-                                <p class="mt-1 text-xs text-gray-500">
-                                    Estimated Cost: ₱{{ project.project_data|get_item:'budget'|default:0|floatformat:2 }}
-                                </p>
+                                <div class="mt-1 text-xs text-gray-500 space-y-1">
+                                    <p>Estimated Cost: ₱{{ project.project_data|get_item:'estimated_cost'|default:0|floatformat:2|intcomma }}</p>
+                                    <p class="text-blue-600">
+                                        💡 Budget Range: ₱<span id="minBudget">0.00</span> - ₱<span id="maxBudget">0.00</span>
+                                        <br><span class="text-gray-400">(40% - 150% of estimated cost)</span>
+                                    </p>
+                                </div>
+                                <div id="budget-validation-message" class="mt-2 text-xs hidden"></div>
                             </div>
 
                             <button type="submit"
+                                    id="approve-budget-btn"
                                     class="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-colors">
                                 <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -488,5 +673,264 @@
         </div>
     </div>
 </div>
+
+<script>
+// Calculate cost per square meter for BOQ section
+document.addEventListener('DOMContentLoaded', function() {
+    const costPerSqmElement = document.getElementById('costPerSqm');
+    if (costPerSqmElement) {
+        const lotSize = parseFloat('{{ project.project_data|get_item:"lot_size"|default:0 }}');
+        const totalCost = parseFloat('{{ project.project_data|get_item:"extracted_total_cost"|default:0 }}');
+        
+        if (lotSize > 0 && totalCost > 0) {
+            const costPerSqm = totalCost / lotSize;
+            costPerSqmElement.textContent = '₱' + costPerSqm.toLocaleString('en-PH', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+    }
+
+    // Number formatting function
+    function formatNumber(num) {
+        if (num === null || num === undefined || num === '') return '0.00';
+        const number = parseFloat(num);
+        if (isNaN(number)) return '0.00';
+        return number.toLocaleString('en-PH', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+
+    // Calculate and display budget range
+    const estimatedCost = parseFloat('{{ project.project_data|get_item:"estimated_cost"|default:0 }}');
+    if (estimatedCost > 0) {
+        const minBudget = estimatedCost * 0.4;
+        const maxBudget = estimatedCost * 1.5;
+        
+        const minBudgetElement = document.getElementById('minBudget');
+        const maxBudgetElement = document.getElementById('maxBudget');
+        
+        if (minBudgetElement) {
+            minBudgetElement.textContent = formatNumber(minBudget);
+        }
+        
+        if (maxBudgetElement) {
+            maxBudgetElement.textContent = formatNumber(maxBudget);
+        }
+    }
+
+    // Budget validation
+    const budgetInput = document.getElementById('approved_budget');
+    const validationMessage = document.getElementById('budget-validation-message');
+    
+    if (budgetInput && validationMessage && estimatedCost > 0) {
+        const minBudget = estimatedCost * 0.4; // 40% minimum
+        const maxBudget = estimatedCost * 1.5; // 150% maximum
+        
+        budgetInput.addEventListener('input', function() {
+            const approvedBudget = parseFloat(this.value) || 0;
+            
+            if (approvedBudget > 0) {
+                if (approvedBudget < minBudget) {
+                    validationMessage.textContent = `⚠️ Budget too low! Minimum: ₱${minBudget.toLocaleString('en-PH', {minimumFractionDigits: 2})} (40% of estimated)`;
+                    validationMessage.className = 'mt-2 text-xs text-red-600 font-medium';
+                    validationMessage.classList.remove('hidden');
+                    this.classList.add('border-red-500');
+                    this.classList.remove('border-gray-300');
+                } else if (approvedBudget > maxBudget) {
+                    validationMessage.textContent = `⚠️ Budget high! Recommended max: ₱${maxBudget.toLocaleString('en-PH', {minimumFractionDigits: 2})} (150% of estimated)`;
+                    validationMessage.className = 'mt-2 text-xs text-yellow-600 font-medium';
+                    validationMessage.classList.remove('hidden');
+                    this.classList.add('border-yellow-500');
+                    this.classList.remove('border-gray-300');
+                } else {
+                    validationMessage.textContent = `✅ Budget within acceptable range (40%-150% of estimated)`;
+                    validationMessage.className = 'mt-2 text-xs text-green-600 font-medium';
+                    validationMessage.classList.remove('hidden');
+                    this.classList.add('border-green-500');
+                    this.classList.remove('border-gray-300', 'border-red-500', 'border-yellow-500');
+                }
+            } else {
+                validationMessage.classList.add('hidden');
+                this.classList.remove('border-red-500', 'border-yellow-500', 'border-green-500');
+                this.classList.add('border-gray-300');
+            }
+        });
+        
+        // Initial validation on page load
+        budgetInput.dispatchEvent(new Event('input'));
+        
+        // Add confirmation for high budgets
+        const approveBtn = document.getElementById('approve-budget-btn');
+        if (approveBtn) {
+            approveBtn.addEventListener('click', function(e) {
+                const approvedBudget = parseFloat(budgetInput.value) || 0;
+                
+                if (approvedBudget > maxBudget) {
+                    e.preventDefault();
+                    const confirmed = confirm(
+                        `⚠️ WARNING: The approved budget (₱${approvedBudget.toLocaleString('en-PH', {minimumFractionDigits: 2})}) is significantly higher than the estimated cost (₱${estimatedCost.toLocaleString('en-PH', {minimumFractionDigits: 2})}).\n\n` +
+                        `This is ${((approvedBudget / estimatedCost) * 100).toFixed(0)}% of the estimated cost.\n\n` +
+                        `Are you sure you want to approve this budget?`
+                    );
+                    
+                    if (confirmed) {
+                        // Submit the form
+                        this.closest('form').submit();
+                    }
+                }
+            });
+        }
+    }
+
+    // BOQ Items Pagination
+    const boqItemsRaw = '{{ project.project_data|get_item:"boq_items"|default:"[]"|escapejs }}';
+    console.log('DEBUG: BOQ Items Raw:', boqItemsRaw);
+    console.log('DEBUG: BOQ Items Raw Type:', typeof boqItemsRaw);
+    console.log('DEBUG: BOQ Items Raw Length:', boqItemsRaw.length);
+    
+    let boqItems = [];
+    try {
+        // Check if it's already an array or needs parsing
+        if (typeof boqItemsRaw === 'string' && boqItemsRaw.startsWith('[')) {
+            boqItems = JSON.parse(boqItemsRaw);
+        } else if (Array.isArray(boqItemsRaw)) {
+            boqItems = boqItemsRaw;
+        } else {
+            console.error('DEBUG: Unexpected data format:', boqItemsRaw);
+            boqItems = [];
+        }
+        console.log('DEBUG: BOQ Items Parsed:', boqItems);
+        console.log('DEBUG: BOQ Items Length:', boqItems.length);
+        console.log('DEBUG: First Item:', boqItems[0]);
+    } catch (e) {
+        console.error('DEBUG: Error parsing BOQ items:', e);
+        boqItems = [];
+    }
+    
+    let currentPage = 1;
+    let itemsPerPage = 10;
+    
+    function renderBOQItems() {
+        console.log('DEBUG: renderBOQItems called');
+        const tableBody = document.getElementById('boqItemsTableBody');
+        console.log('DEBUG: tableBody element:', tableBody);
+        
+        // Get all existing rows
+        const allRows = tableBody.querySelectorAll('.boq-item-row');
+        const totalItems = allRows.length;
+        console.log('DEBUG: totalItems from DOM:', totalItems);
+        
+        const totalPages = Math.ceil(totalItems / itemsPerPage);
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+        
+        console.log('DEBUG: Rendering items from', startIndex, 'to', endIndex);
+        
+        // Hide all rows first
+        allRows.forEach((row, index) => {
+            if (index >= startIndex && index < endIndex) {
+                row.style.display = '';
+                console.log('DEBUG: Showing row', index);
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        // Update pagination info
+        document.getElementById('showingStart').textContent = startIndex + 1;
+        document.getElementById('showingEnd').textContent = endIndex;
+        document.getElementById('totalItems').textContent = totalItems;
+        
+        // Update pagination buttons
+        const prevBtn = document.getElementById('prevPage');
+        const nextBtn = document.getElementById('nextPage');
+        
+        prevBtn.disabled = currentPage === 1;
+        nextBtn.disabled = currentPage === totalPages;
+        
+        // Update page numbers
+        const pageNumbers = document.getElementById('pageNumbers');
+        pageNumbers.innerHTML = '';
+        
+        const maxVisiblePages = 5;
+        let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+        
+        if (endPage - startPage + 1 < maxVisiblePages) {
+            startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const pageBtn = document.createElement('button');
+            pageBtn.className = `px-2 py-1 text-xs border rounded ${
+                i === currentPage 
+                    ? 'bg-blue-500 text-white border-blue-500' 
+                    : 'border-gray-300 hover:bg-gray-50'
+            }`;
+            pageBtn.textContent = i;
+            pageBtn.addEventListener('click', () => {
+                currentPage = i;
+                renderBOQItems();
+            });
+            pageNumbers.appendChild(pageBtn);
+        }
+    }
+    
+    // Event listeners for pagination
+    document.getElementById('prevPage').addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            renderBOQItems();
+        }
+    });
+    
+    document.getElementById('nextPage').addEventListener('click', () => {
+        const totalPages = Math.ceil(boqItems.length / itemsPerPage);
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderBOQItems();
+        }
+    });
+    
+    document.getElementById('itemsPerPage').addEventListener('change', (e) => {
+        itemsPerPage = parseInt(e.target.value);
+        currentPage = 1; // Reset to first page
+        renderBOQItems();
+    });
+    
+    // Initialize BOQ pagination if items exist
+    console.log('DEBUG: Initializing BOQ pagination');
+    
+    // Check if there are rows in the DOM
+    const tableBody = document.getElementById('boqItemsTableBody');
+    const allRows = tableBody ? tableBody.querySelectorAll('.boq-item-row') : [];
+    console.log('DEBUG: Found', allRows.length, 'BOQ rows in DOM');
+    
+    if (allRows.length > 0) {
+        console.log('DEBUG: Calling renderBOQItems');
+        renderBOQItems();
+    } else {
+        console.log('DEBUG: No BOQ items to render');
+        // Show a message in the table body
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="px-3 py-8 text-center text-gray-500">
+                        <div class="flex flex-col items-center">
+                            <svg class="w-8 h-8 text-gray-400 mb-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
+                            </svg>
+                            <p class="text-sm">No BOQ items found</p>
+                            <p class="text-xs text-gray-400 mt-1">Check if BOQ file was processed correctly</p>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+});
+</script>
 
 {% endblock %}

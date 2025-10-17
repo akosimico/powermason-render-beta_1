@@ -72,7 +72,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
-    # 'authentication.middleware.LimitMessagesMiddleware',
+    "authentication.middleware.TokenGenerationMiddleware",
+    "authentication.middleware.LimitMessagesMiddleware",
 ]
 
 CSRF_TRUSTED_ORIGINS = [

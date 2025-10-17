@@ -50,14 +50,6 @@ def progress_monitoring(request, token, role):
     # Search filter
     if search_query:
         projects = projects.filter(project_name__icontains=search_query)
-
-    # Filter by archived status
-    if show_archived:
-        projects = projects.filter(archived=True)
-    else:
-        projects = projects.filter(archived=False)
-        if not show_completed:
-            projects = projects.exclude(status__in=['CP', 'CN'])
             
     # Filter by specific status if provided
     if status_filter:
@@ -73,42 +65,48 @@ def progress_monitoring(request, token, role):
     project_data = []
     status_counts = {'total': 0, 'ongoing': 0, 'completed': 0, 'planned': 0, 'cancelled': 0}
     
-    for project in projects:
-        tasks = ProjectTask.objects.filter(project=project).order_by("start_date")
-        task_progress = [
-            (
-                task.task_name,
-                round(task.progress or 0, 2),
-                task.weight or 1,
-                task.id
-            )
-            for task in tasks
-        ]
-        
-        # Calculate total progress
-        total_weight = sum(task.weight or 1 for task in tasks) or 1
-        total_progress = sum((task.progress or 0) * (task.weight or 1) for task in tasks) / total_weight
+    # Check if projects exist
+    if not projects.exists():
+        # Handle case when no projects are found
+        project_data = []
+        status_counts = {'total': 0, 'ongoing': 0, 'completed': 0, 'planned': 0, 'cancelled': 0}
+    else:
+        for project in projects:
+            tasks = ProjectTask.objects.filter(project=project).order_by("start_date")
+            task_progress = [
+                (
+                    task.task_name,
+                    round(task.progress or 0, 2),
+                    task.weight or 1,
+                    task.id
+                )
+                for task in tasks
+            ]
+            
+            # Calculate total progress
+            total_weight = sum(task.weight or 1 for task in tasks) or 1
+            total_progress = sum((task.progress or 0) * (task.weight or 1) for task in tasks) / total_weight
 
-        project_data.append({
-            "project_name": project.project_name,
-            "project_status": project.status,
-            "task_progress": task_progress,
-            "total_progress": round(total_progress, 2),
-            "archived": project.archived,
-            "project_id": project.id,
-            "project_source": project.project_source,
-        })
-        
-        # Count projects by status
-        status_counts['total'] += 1
-        if project.status == 'OG':
-            status_counts['ongoing'] += 1
-        elif project.status == 'CP':
-            status_counts['completed'] += 1
-        elif project.status == 'PL':
-            status_counts['planned'] += 1
-        elif project.status == 'CN':
-            status_counts['cancelled'] += 1
+            project_data.append({
+                "project_name": project.project_name,
+                "project_status": project.status,
+                "task_progress": task_progress,
+                "total_progress": round(total_progress, 2),
+                "archived": project.archived,
+                "project_id": project.id,
+                "project_source": project.project_source,
+            })
+            
+            # Count projects by status
+            status_counts['total'] += 1
+            if project.status == 'OG':
+                status_counts['ongoing'] += 1
+            elif project.status == 'CP':
+                status_counts['completed'] += 1
+            elif project.status == 'PL':
+                status_counts['planned'] += 1
+            elif project.status == 'CN':
+                status_counts['cancelled'] += 1
 
     # Get all available statuses for filter dropdown
     all_statuses = [
@@ -128,6 +126,6 @@ def progress_monitoring(request, token, role):
         "status_counts": status_counts,
         "all_statuses": all_statuses,
         "user_role": user_role,
-        "project_source":project.project_source,
+        "has_projects": len(project_data) > 0,
     }
     return render(request, "progress/dashboard_projects_list.html", context)

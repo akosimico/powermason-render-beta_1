@@ -14,6 +14,17 @@ urlpatterns = [
     # ---------------------------
     # Scheduling / Tasks
     # ---------------------------
+    # Session-based task management (primary)
+    path('<int:project_id>/tasks/', views.task_list, name='task_list_session'),
+    path("<int:project_id>/tasks/add/", views.task_create, name="task_create_session"),
+    path("<int:project_id>/tasks/<int:task_id>/update/", views.task_update, name="task_update_session"),
+    path("<int:project_id>/tasks/<int:task_id>/delete/", views.task_archive, name="task_archive_session"),
+    path("<int:project_id>/tasks/bulk-delete/", views.task_bulk_archive, name="task_bulk_archive_session"),
+    path("<int:project_id>/<int:task_id>/unarchive/", views.task_unarchive, name="task_unarchive_session"),
+    path("<int:project_id>/tasks/unarchive-selected/", views.task_bulk_unarchive, name="task_bulk_unarchive_session"),
+    path("task/<int:task_id>/submit-progress/", views.submit_progress_update, name="submit_progress_session"),
+    
+    # Token-based task management (legacy)
     path('<int:project_id>/<str:token>/<str:role>/tasks/', views.task_list, name='task_list'),
     path("<int:project_id>/<str:token>/<str:role>/tasks/add/", views.task_create, name="task_create"),
     # path("<int:project_id>/<str:token>/<str:role>/tasks/save-imported/", views.save_imported_tasks, name="save_imported_tasks"),
@@ -23,10 +34,15 @@ urlpatterns = [
     path("<int:project_id>/<str:token>/<str:role>/<int:task_id>/unarchive/", views.task_unarchive, name="task_unarchive"),
     path("<int:project_id>/<str:token>/<str:role>/tasks/unarchive-selected/", views.task_bulk_unarchive, name="task_bulk_unarchive"),
     path("<str:token>/task/<int:task_id>/submit-progress/<str:role>/", views.submit_progress_update, name="submit_progress"),
-path('<int:project_id>/create-scope/', views.create_scope_ajax, name='create_scope_ajax'),
+    
+    path('<int:project_id>/create-scope/', views.create_scope_ajax, name='create_scope_ajax'),
+    
     # ---------------------------
     # Scope Budget Allocation
     # ---------------------------
+    # Session-based scope budget allocation (primary)
+    path('<int:project_id>/scope-budget/', scope_budget_allocation, name='scope_budget_allocation_session'),
+    # Token-based scope budget allocation (legacy)
     path('<int:project_id>/<str:token>/<str:role>/scope-budget/', scope_budget_allocation, name='scope_budget_allocation'),
     
     # ---------------------------
@@ -42,6 +58,11 @@ path('<int:project_id>/create-scope/', views.create_scope_ajax, name='create_sco
     # ---------------------------
     # Gantt Chart & Schedule Views
     # ---------------------------
+    # Session-based Gantt views (primary)
+    path('<int:project_id>/gantt/', task_gantt_view, name='task_gantt_view_session'),
+    path('<int:project_id>/lookahead/', three_week_lookahead, name='three_week_lookahead_session'),
+    
+    # Token-based Gantt views (legacy)
     path('<str:token>/<str:role>/<int:project_id>/gantt/', task_gantt_view, name='task_gantt_view'),
     path('<str:token>/<str:role>/<int:project_id>/lookahead/', three_week_lookahead, name='three_week_lookahead'),
 
@@ -52,6 +73,9 @@ path('<int:project_id>/create-scope/', views.create_scope_ajax, name='create_sco
     # ---------------------------
     # Resource Allocation
     # ---------------------------
+    # Session-based resource allocation (primary)
+    path('<int:project_id>/tasks/<int:task_id>/resources/', task_resource_allocation, name='task_resource_allocation_session'),
+    # Token-based resource allocation (legacy)
     path('<str:token>/<str:role>/<int:project_id>/tasks/<int:task_id>/resources/', task_resource_allocation, name='task_resource_allocation'),
 
     # Resource API Endpoints

@@ -1,5 +1,7 @@
 from django.urls import path
 from . import views
+from . import cost_estimation_views
+from . import file_preview_views
 from .cost_dashboard_views import (
     project_detail_cost_dashboard,
     api_project_cost_summary,
@@ -15,7 +17,9 @@ urlpatterns = [
     # ==============================================
     # PROJECT MANAGEMENT
     # ==============================================
-    # Signed project list with role
+    # Session-based project list (primary)
+    path('list/', views.project_list_signed_with_role, name='project_list_session'),
+    # Token-based project list (legacy)
     path('<str:token>/list/<str:role>/', views.project_list_signed_with_role, name='project_list'),
     
     # General / Direct project lists (session-based and token-based)
@@ -24,21 +28,27 @@ urlpatterns = [
     path('direct/', views.direct_projects_list, name='project_list_direct_client_session'),
     path('direct/<str:token>/<str:role>/', views.direct_projects_list, name='project_list_direct_client'),
 
-    # Create project
+    # Create project - Session-based (primary) and Token-based (legacy)
+    path('create/<str:project_type>/<str:client_id>/', views.project_create, name='project_create_session'),
     path('<str:token>/create/<str:role>/<str:project_type>/<str:client_id>/', views.project_create, name='project_create'),
 
-    # Edit project
+    # Edit project - Session-based (primary) and Token-based (legacy)
+    path('edit/<int:pk>/', views.project_edit_signed_with_role, name='project_edit_session'),
     path('<str:token>/edit/<str:role>/<int:pk>/', views.project_edit_signed_with_role, name='project_edit'),
     
-    # View project
+    # View project - Session-based (primary) and Token-based (legacy)
+    path('view/<str:project_source>/<int:pk>/', views.project_view, name='project_view_session'),
     path('<str:token>/view/<str:role>/<str:project_source>/<int:pk>/', views.project_view, name='project_view'),
     
     # Update project status
     path('projects/<int:project_id>/update-status/', views.update_project_status, name='update_project_status'),
 
-    # Archive/Unarchive project
+    # Archive/Unarchive project - Session-based (primary) and Token-based (legacy)
+    path('delete/<str:project_type>/<int:pk>/', views.project_archive_signed_with_role, name='project_archive_session'),
     path('<str:token>/delete/<str:role>/<str:project_type>/<int:pk>/', views.project_archive_signed_with_role, name='project_archive'),
+    path('unarchive/<str:project_type>/<int:pk>/', views.project_unarchive_signed_with_role, name='project_unarchive_session'),
     path('<str:token>/unarchive/<str:role>/<str:project_type>/<int:pk>/', views.project_unarchive_signed_with_role, name='project_unarchive'),
+    path('archived/<str:project_type>/', views.archived_projects_list, name='archived_projects_list_session'),
     path('archived/<str:token>/<str:role>/<str:project_type>/', views.archived_projects_list, name='archived_projects_list'),
 
 
@@ -87,10 +97,12 @@ path('<int:project_id>/categories/<int:category_id>/allocation/', views.get_cate
     # ==============================================
     # DASHBOARD & REPORTING
     # ==============================================
-    # Project costing dashboard (overview - all projects)
+    # Project costing dashboard (overview - all projects) - Session-based (primary) and Token-based (legacy)
+    path('costing/', views.project_costing_dashboard, name='project_costing_dashboard_session'),
     path('<str:token>/costing/<str:role>/', views.project_costing_dashboard, name='project_costing_dashboard'),
 
-    # Detailed cost dashboard for specific project
+    # Detailed cost dashboard for specific project - Session-based (primary) and Token-based (legacy)
+    path('costing/<int:project_id>/', project_detail_cost_dashboard, name='project_detail_cost_dashboard_session'),
     path('<str:token>/costing/<str:role>/<int:project_id>/', project_detail_cost_dashboard, name='project_detail_cost_dashboard'),
 
     # Cost tracking API endpoints
@@ -115,7 +127,8 @@ path('<int:project_id>/categories/<int:category_id>/allocation/', views.get_cate
     # Pending projects list (renamed from staging)
 path('pending/', views.pending_projects_list, name='pending_projects_list'),
 
-# Review a single pending project (renamed from staging)
+# Review a single pending project (renamed from staging) - Session-based (primary) and Token-based (legacy)
+path('pending/<int:project_id>/review/', views.review_pending_project, name='review_pending_project_session'),
 path('pending/<str:token>/<int:project_id>/<str:role>/review/', views.review_pending_project, name='review_pending_project'),
 
     # ==============================================
@@ -149,9 +162,27 @@ path('pending/<str:token>/<int:project_id>/<str:role>/review/', views.review_pen
     path('api/subcontractors/<int:subcon_id>/payments/', views.api_subcontractor_payments, name='api_subcontractor_payments'),
     path('api/subcontractors/<int:subcon_id>/payments/create/', views.api_create_payment, name='api_create_payment'),
 
-    # Mobilization Costs
+    # Mobilization Costs - Session-based (primary) and Token-based (legacy)
+    path('mobilization/', views.mobilization_costs, name='mobilization_costs_session'),
     path('<str:token>/<str:role>/mobilization/', views.mobilization_costs, name='mobilization_costs'),
     path('api/mobilization-costs/', views.api_mobilization_costs_list, name='api_mobilization_costs_list'),
     path('api/mobilization-costs/create/', views.api_create_mobilization_cost, name='api_create_mobilization_cost'),
     path('api/mobilization-costs/<int:cost_id>/', views.api_mobilization_cost_detail, name='api_mobilization_cost_detail'),
+    
+    # Cost Estimation API
+    path('api/cost-estimation/', cost_estimation_views.CostEstimationAPIView.as_view(), name='api_cost_estimation'),
+    path('api/cost-estimation/options/', cost_estimation_views.get_estimation_options_api, name='api_estimation_options'),
+    path('<str:token>/<str:role>/api/cost-estimation/', cost_estimation_views.estimate_project_cost_api, name='api_cost_estimation_legacy'),
+    
+    # File Preview and Data Extraction API
+    path('api/file-preview/', file_preview_views.FilePreviewAPIView.as_view(), name='api_file_preview'),
+    path('api/file-preview/legacy/', file_preview_views.file_preview_api, name='api_file_preview_legacy'),
+    path('api/save-extracted-data/', file_preview_views.save_extracted_data_api, name='api_save_extracted_data'),
+    
+    # BOQ Upload API
+    path('api/boq-upload/', file_preview_views.BOQUploadAPIView.as_view(), name='api_boq_upload'),
+        path('api/project-type-cost-data/<int:project_type_id>/', file_preview_views.check_project_type_cost_data, name='check_project_type_cost_data'),
+        path('api/project-type-boq-breakdown/<int:project_type_id>/', file_preview_views.get_project_type_boq_breakdown, name='get_project_type_boq_breakdown'),
+        path('api/project-type-auto-configure/<int:project_type_id>/', file_preview_views.auto_configure_project_type_costs, name='auto_configure_project_type_costs'),
+        path('api/boq-export/<int:project_id>/', file_preview_views.export_boq_to_excel, name='export_boq_to_excel'),
 ]
